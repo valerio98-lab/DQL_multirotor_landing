@@ -1,0 +1,12 @@
+[tool.black]
+line-length = 119
+
+[project]
+name = "dql-multirotor-landing"
+version = "0.1.0"
+description = "Deep Q-Learning for multirotor landing"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch==2.4.0",
+]
