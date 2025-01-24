@@ -1,12 +1,24 @@
-[tool.black]
-line-length = 119
-
 [project]
 name = "dql-multirotor-landing"
 version = "0.1.0"
 description = "Deep Q-Learning for multirotor landing"
 readme = "README.md"
+authors = [
+    { name = "Valerio Belli", email = "valeriobelli26@gmail.com"},
+    { name = "Jose Manuel", email = "josedlv936@gmail.com" }
+]
 requires-python = ">=3.10"
 dependencies = [
     "torch==2.4.0",
 ]
+
+[project.scripts]
+dql-multirotor-landing2 = "dql_multirotor_landing:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 119
+
