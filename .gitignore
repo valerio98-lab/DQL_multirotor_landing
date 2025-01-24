@@ -6,6 +6,6 @@ dist/
 wheels/
 *.egg-info
 .mypy_cache
-
+IsaacLab/
 # Virtual environments
 .venv

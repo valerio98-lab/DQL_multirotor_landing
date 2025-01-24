@@ -9,6 +9,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "pip",
     "isaacsim==4.2.0.2",
     "isaacsim-extscache-kit==4.2.0.2",
     "isaacsim-extscache-kit-sdk==4.2.0.2",
@@ -19,11 +20,12 @@ dependencies = [
 dql-multirotor-landing2 = "dql_multirotor_landing:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling","pip"]
 build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 119
 
-
-
+[[tool.mypy.overrides]]
+module = ["omni.*"]
+ignore_missing_imports = true
