@@ -51,7 +51,7 @@ def main():
             # reset
             if count % 300 == 0:
                 count = 0
-                env.reset()
+                # env.reset()
                 print("-" * 80)
                 print("[INFO]: Resetting environment...")
             # sample random actions
