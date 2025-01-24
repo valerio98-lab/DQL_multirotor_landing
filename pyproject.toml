@@ -9,7 +9,10 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "torch==2.4.0",
+    "isaacsim==4.2.0.2",
+    "isaacsim-extscache-kit==4.2.0.2",
+    "isaacsim-extscache-kit-sdk==4.2.0.2",
+    "isaacsim-extscache-physics==4.2.0.2",
 ]
 
 [project.scripts]
@@ -21,4 +24,6 @@ build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 119
+
+
 
