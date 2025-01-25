@@ -3,6 +3,8 @@
         "./IsaacLab/source/extensions/omni",
         "./IsaacLab/source/extensions/omni.isaac",
         "./IsaacLab/source/extensions/omni.isaac.lab",
-        "./IsaacLab/source/extensions/omni.isaac.lab_tasks"
+        "./IsaacLab/source/extensions/omni.isaac.lab_tasks",
+        "./IsaacLab/source/apps/isaaclab.python.kit",
+        "./IsaacLab/source/extensions/omni.isaac.lab_assets",
     ]
 }
