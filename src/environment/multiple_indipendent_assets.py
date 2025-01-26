@@ -36,7 +36,7 @@ from omni.isaac.lab.utils.assets import ISAACLAB_NUCLEUS_DIR
 ##
 from omni.isaac.lab_assets import CARTPOLE_CFG  # isort:skip
 
-# from omni.isaac.lab_tasks.manager_based.classic.cartpole.cartpole_env_cfg import CartpoleSceneCfg
+from omni.isaac.lab_tasks.manager_based.classic.humanoid.humanoid_env_cfg import HumanoidEnvCfg
 
 
 @configclass
@@ -51,14 +51,16 @@ class CartpoleScene(InteractiveSceneCfg):
     )
 
     # articulation
-    robot: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Cartpole")
+    robot1: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Cartpole1")
+    robot2: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Cartpole2")
 
 
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=5.0)
+    joint_effort = mdp.JointEffortActionCfg(asset_name="robot1", joint_names=["slider_to_cart"], scale=5.0)
+    joint_effort1 = mdp.JointEffortActionCfg(asset_name="robot2", joint_names=["slider_to_cart"], scale=25.0)
 
 
 @configclass
@@ -84,11 +86,21 @@ class EventCfg:
     """Configuration for events."""
 
     # on startup
-    add_pole_mass = EventTerm(
+    add_pole_mass1 = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg(name="robot", body_names=["pole"]),
+            "asset_cfg": SceneEntityCfg(name="robot1", body_names=["pole"]),
+            "mass_distribution_params": (0.5, 0.5),
+            "operation": "add",
+        },
+    )
+
+    add_pole_mass2 = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg(name="robot2", body_names=["pole"]),
             "mass_distribution_params": (0.1, 0.5),
             "operation": "add",
         },
@@ -99,7 +111,7 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg(name="robot", joint_names=["slider_to_cart"]),
+            "asset_cfg": SceneEntityCfg(name="robot1", joint_names=["slider_to_cart"]),
             "position_range": (-1.0, 1.0),
             "velocity_range": (-0.1, 0.1),
         },
@@ -109,7 +121,7 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg(name="robot", joint_names=["cart_to_pole"]),
+            "asset_cfg": SceneEntityCfg(name="robot1", joint_names=["cart_to_pole"]),
             "position_range": (-0.125 * math.pi, 0.125 * math.pi),
             "velocity_range": (-0.01 * math.pi, 0.01 * math.pi),
         },
@@ -121,7 +133,7 @@ class CartpoleEnvCfg(ManagerBasedEnvCfg):
     """Configuration for the cartpole environment."""
 
     # Scene settings
-    scene = CartpoleScene(num_envs=1024, env_spacing=2.5)
+    scene = CartpoleScene(num_envs=30, env_spacing=2.5)
     # Basic settings
     observations = ObservationsCfg()
     actions = ActionsCfg()
