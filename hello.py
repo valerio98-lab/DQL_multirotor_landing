@@ -12,8 +12,12 @@ import argparse
 from omni.isaac.lab.app import AppLauncher
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Tutorial on running the cartpole RL environment.")
-parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to spawn.")
+parser = argparse.ArgumentParser(
+    description="Tutorial on running the cartpole RL environment."
+)
+parser.add_argument(
+    "--num_envs", type=int, default=16, help="Number of environments to spawn."
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)

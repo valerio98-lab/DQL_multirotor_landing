@@ -7,5 +7,8 @@ wheels/
 *.egg-info
 .mypy_cache
 IsaacLab/
+src/jose_tuto/
+
 # Virtual environments
 .venv
+.python-version

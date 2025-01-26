@@ -29,3 +29,11 @@ line-length = 119
 [[tool.mypy.overrides]]
 module = ["omni.*"]
 ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.3",
+]
+
+[tool.ruff]
+ignore = ["E402"]
