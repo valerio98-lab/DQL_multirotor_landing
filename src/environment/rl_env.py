@@ -36,15 +36,15 @@ from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.utils import configclass
+from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
 
 import omni.isaac.lab_tasks.manager_based.classic.cartpole.mdp as mdp
 
 ##
 # Pre-defined configs
 ##
-from omni.isaac.lab_assets.cartpole import CARTPOLE_CFG  # isort:skip
-from omni.isaac.lab_assets.franka import FRANKA_PANDA_CFG  # isort:skip
-
+from omni.isaac.lab_assets.quadcopter import CRAZYFLIE_CFG  # isort:skip
+from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort:skip
 
 ##
 # Scene definition
@@ -61,15 +61,17 @@ class CartpoleSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
     )
 
-    # cartpole
-    robot: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    robot2: ArticulationCfg = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot2")
-
     # lights
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
         spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=500.0),
     )
+
+    # cartpole
+    drone: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Drone")
+    drone.init_state.pos = (1.0, 1.0, 1.0)
+    dog: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Dog")
+    dog.init_state.pos = (5.0, 1.0, 1.0)
 
 
 ##
@@ -81,7 +83,7 @@ class CartpoleSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
+    joint_effort = mdp.JointEffortActionCfg(asset_name="dog", joint_names=[".*"], scale=5.0)
 
 
 @configclass
@@ -93,8 +95,8 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, params={"asset_cfg": SceneEntityCfg("dog")})
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, params={"asset_cfg": SceneEntityCfg("dog")})
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -113,9 +115,9 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]),
+            "asset_cfg": SceneEntityCfg("dog", joint_names=[".*"]),
             "position_range": (-1.0, 1.0),
-            "velocity_range": (-0.5, 0.5),
+            "velocity_range": (-1.0, 1.0),
         },
     )
 
@@ -123,7 +125,7 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]),
+            "asset_cfg": SceneEntityCfg("dog", joint_names=[".*"]),
             "position_range": (-0.25 * math.pi, 0.25 * math.pi),
             "velocity_range": (-0.25 * math.pi, 0.25 * math.pi),
         },
@@ -139,23 +141,23 @@ class RewardsCfg:
     # (2) Failure penalty
     terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
     # (3) Primary task: keep pole upright
-    pole_pos = RewTerm(
-        func=mdp.joint_pos_target_l2,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]), "target": 0.0},
-    )
-    # (4) Shaping tasks: lower cart velocity
-    cart_vel = RewTerm(
-        func=mdp.joint_vel_l1,
-        weight=-0.01,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"])},
-    )
-    # (5) Shaping tasks: lower pole angular velocity
-    pole_vel = RewTerm(
-        func=mdp.joint_vel_l1,
-        weight=-0.005,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"])},
-    )
+    # pole_pos = RewTerm(
+    #     func=mdp.joint_pos_target_l2,
+    #     weight=-1.0,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]), "target": 0.0},
+    # )
+    # # (4) Shaping tasks: lower cart velocity
+    # cart_vel = RewTerm(
+    #     func=mdp.joint_vel_l1,
+    #     weight=-0.01,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"])},
+    # )
+    # # (5) Shaping tasks: lower pole angular velocity
+    # pole_vel = RewTerm(
+    #     func=mdp.joint_vel_l1,
+    #     weight=-0.005,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"])},
+    # )
 
 
 @configclass
@@ -165,10 +167,10 @@ class TerminationsCfg:
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     # (2) Cart out of bounds
-    cart_out_of_bounds = DoneTerm(
-        func=mdp.joint_pos_out_of_manual_limit,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]), "bounds": (-3.0, 3.0)},
-    )
+    # cart_out_of_bounds = DoneTerm(
+    #     func=mdp.joint_pos_out_of_manual_limit,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]), "bounds": (-3.0, 3.0)},
+    # )
 
 
 ##
