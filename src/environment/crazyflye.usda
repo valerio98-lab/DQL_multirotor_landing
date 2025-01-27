@@ -62,7 +62,8 @@ def Xform "crazyflie" (
         quatf physics:principalAxes = (1, 0, 0, 0)
         float3 xformOp:rotateXYZ = (0, 0, 0)
         double3 xformOp:translate = (0, 0, 0)
-        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+        float3 xformOp:scale = (5,5,1)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
 
         def Xform "body_visual"
         {

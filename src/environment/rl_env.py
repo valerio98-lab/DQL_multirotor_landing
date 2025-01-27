@@ -38,17 +38,22 @@ from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
 
-import omni.isaac.lab_tasks.manager_based.classic.cartpole.mdp as mdp
+import omni.isaac.lab.envs.mdp as mdp
 
 ##
 # Pre-defined configs
 ##
-from omni.isaac.lab_assets.quadcopter import CRAZYFLIE_CFG  # isort:skip
-from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort:skip
+from cfg.crazyflie_cfg import CRAZYFLIE_CFG  # isort:skip
+from cfg.iw_hub_cfg import IW_HUB_CFG
 
 ##
 # Scene definition
 ##
+
+
+def constant_commands(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """The generated command from the command generator."""
+    return torch.tensor([[2, 1.0, 0]], device=env.device).repeat(env.num_envs, 1)
 
 
 @configclass
@@ -68,10 +73,10 @@ class CartpoleSceneCfg(InteractiveSceneCfg):
     )
 
     # cartpole
-    drone: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Drone")
-    drone.init_state.pos = (1.0, 1.0, 1.0)
-    dog: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="{ENV_REGEX_NS}/Dog")
-    dog.init_state.pos = (5.0, 1.0, 1.0)
+    target: ArticulationCfg = IW_HUB_CFG.replace(prim_path="{ENV_REGEX_NS}/Target")
+    target.init_state.pos = (1.0, 1.0, 1.0)
+    agent: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="{ENV_REGEX_NS}/Agent")
+    agent.init_state.pos = (5.0, 1.0, 1.0)
 
 
 ##
@@ -83,7 +88,7 @@ class CartpoleSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_effort = mdp.JointEffortActionCfg(asset_name="dog", joint_names=[".*"], scale=5.0)
+    joint_effort = mdp.JointPositionActionCfg(asset_name="target", joint_names=["left_wheel_joint"], scale=5.0)
 
 
 @configclass
@@ -95,8 +100,18 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, params={"asset_cfg": SceneEntityCfg("dog")})
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, params={"asset_cfg": SceneEntityCfg("dog")})
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, params={"asset_cfg": SceneEntityCfg("target")})
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, params={"asset_cfg": SceneEntityCfg("target")})
+        velocity_commands = ObsTerm(func=constant_commands)
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg(name="target", joint_names=["left_wheel_joint", "right_wheel_joint"])},
+        )
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg(name="target", joint_names=["left_wheel_joint", "right_wheel_joint"])},
+        )
+        actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -110,26 +125,7 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
-    # reset
-    reset_cart_position = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("dog", joint_names=[".*"]),
-            "position_range": (-1.0, 1.0),
-            "velocity_range": (-1.0, 1.0),
-        },
-    )
-
-    reset_pole_position = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("dog", joint_names=[".*"]),
-            "position_range": (-0.25 * math.pi, 0.25 * math.pi),
-            "velocity_range": (-0.25 * math.pi, 0.25 * math.pi),
-        },
-    )
+    reset_scene = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
 
 @configclass
@@ -183,7 +179,7 @@ class CartpoleEnv(ManagerBasedRLEnvCfg):
     """Configuration for the cartpole environment."""
 
     # Scene settings
-    scene: CartpoleSceneCfg = CartpoleSceneCfg(num_envs=4096, env_spacing=4.0)
+    scene: CartpoleSceneCfg = CartpoleSceneCfg(num_envs=1, env_spacing=4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -218,13 +214,14 @@ def main():
     while simulation_app.is_running():
         with torch.inference_mode():
             # reset
-            if count % 300 == 0:
+            if count % 5000 == 0:
                 count = 0
                 env.reset()
                 print("-" * 80)
                 print("[INFO]: Resetting environment...")
             # sample random actions
             joint_efforts = torch.randn_like(env.action_manager.action)
+            # joint_efforts = torch.tensor([50.0], device=env.device).unsqueeze(0)
             # step the environment
             obs, rew, terminated, truncated, info = env.step(joint_efforts)
             # print current orientation of pole

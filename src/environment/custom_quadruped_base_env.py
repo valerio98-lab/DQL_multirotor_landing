@@ -133,6 +133,7 @@ class ActionsCfg:
     """Action specifications for the MDP."""
 
     joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
+    joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5)
 
 
 @configclass
@@ -227,6 +228,7 @@ def main():
         with torch.inference_mode():
             # reset
             if count % 1000 == 0:
+                print(f"[INFO]: Step {count}")
                 obs, _ = env.reset()
                 count = 0
                 print("-" * 80)
