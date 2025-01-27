@@ -6,13 +6,15 @@
 
 import argparse
 
-
 from omni.isaac.lab.app import AppLauncher
 
-
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Tutorial on running the cartpole RL environment.")
-parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to spawn.")
+parser = argparse.ArgumentParser(
+    description="Tutorial on running the cartpole RL environment."
+)
+parser.add_argument(
+    "--num_envs", type=int, default=16, help="Number of environments to spawn."
+)
 # apend AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -23,11 +25,12 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 import math
-import torch
 
+import omni.isaac.lab.envs.mdp as mdp
 import omni.isaac.lab.sim as sim_utils
+import torch
 from omni.isaac.lab.assets import ArticulationCfg, AssetBaseCfg
-from omni.isaac.lab.envs import ManagerBasedRLEnvCfg, ManagerBasedRLEnv
+from omni.isaac.lab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 from omni.isaac.lab.managers import EventTermCfg as EventTerm
 from omni.isaac.lab.managers import ObservationGroupCfg as ObsGroup
 from omni.isaac.lab.managers import ObservationTermCfg as ObsTerm
@@ -37,8 +40,6 @@ from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
-
-import omni.isaac.lab.envs.mdp as mdp
 
 ##
 # Pre-defined configs
@@ -88,7 +89,11 @@ class CartpoleSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_effort = mdp.JointPositionActionCfg(asset_name="target", joint_names=["left_wheel_joint"], scale=5.0)
+    joint_effort = mdp.JointVelocityActionCfg(
+        asset_name="target",
+        joint_names=["left_wheel_joint", "right_wheel_joint"],
+        scale=0.5,
+    )
 
 
 @configclass
@@ -100,16 +105,28 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, params={"asset_cfg": SceneEntityCfg("target")})
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, params={"asset_cfg": SceneEntityCfg("target")})
+        base_lin_vel = ObsTerm(
+            func=mdp.base_lin_vel, params={"asset_cfg": SceneEntityCfg("target")}
+        )
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel, params={"asset_cfg": SceneEntityCfg("target")}
+        )
         velocity_commands = ObsTerm(func=constant_commands)
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg(name="target", joint_names=["left_wheel_joint", "right_wheel_joint"])},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    name="target", joint_names=["left_wheel_joint", "right_wheel_joint"]
+                )
+            },
         )
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg(name="target", joint_names=["left_wheel_joint", "right_wheel_joint"])},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    name="target", joint_names=["left_wheel_joint", "right_wheel_joint"]
+                )
+            },
         )
         actions = ObsTerm(func=mdp.last_action)
 
@@ -221,7 +238,7 @@ def main():
                 print("[INFO]: Resetting environment...")
             # sample random actions
             joint_efforts = torch.randn_like(env.action_manager.action)
-            # joint_efforts = torch.tensor([50.0], device=env.device).unsqueeze(0)
+            joint_efforts = torch.tensor([50.0, 50.0], device=env.device).unsqueeze(0)
             # step the environment
             obs, rew, terminated, truncated, info = env.step(joint_efforts)
             # print current orientation of pole
