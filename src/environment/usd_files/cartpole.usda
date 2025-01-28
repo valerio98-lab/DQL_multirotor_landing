@@ -1,0 +1,144 @@
+#usda 1.0
+(
+    defaultPrim = "cartpole"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "cartpole" (
+    prepend apiSchemas = ["PhysicsArticulationRootAPI", "PhysxArticulationAPI"]
+)
+{
+    bool physxArticulation:enabledSelfCollisions = 0
+    int physxArticulation:solverPositionIterationCount = 32
+    int physxArticulation:solverVelocityIterationCount = 16
+    quatd xformOp:orient = (1, 0, 0, 0)
+    double3 xformOp:scale = (1, 1, 1)
+    double3 xformOp:translate = (0, 0, 0)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+    def Xform "slider" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def "visuals" (
+            instanceable = true
+            prepend references = @./Props/instanceable_meshes.usd@</cartpole/slider/visuals>
+        )
+        {
+        }
+
+        def "collisions" (
+            instanceable = true
+            prepend references = @./Props/instanceable_meshes.usd@</cartpole/slider/collisions>
+        )
+        {
+        }
+
+        def PhysicsPrismaticJoint "slider_to_cart" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsJointStateAPI:linear", "PhysicsDriveAPI:linear"]
+        )
+        {
+            float drive:linear:physics:damping = 0
+            float drive:linear:physics:maxForce = 1000
+            float drive:linear:physics:stiffness = 0
+            uniform token drive:linear:physics:type = "force"
+            uniform token physics:axis = "X"
+            rel physics:body0 = </cartpole/slider>
+            rel physics:body1 = </cartpole/cart>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.70710677, 0, 0, 0.70710677)
+            quatf physics:localRot1 = (0.70710677, 0, 0, 0.70710677)
+            float physics:lowerLimit = -4
+            float physics:upperLimit = 4
+            float physxJoint:jointFriction = 0
+            float physxJoint:maxJointVelocity = 100
+        }
+    }
+
+    def PhysicsFixedJoint "root_joint"
+    {
+        rel physics:body1 = </cartpole/slider>
+    }
+
+    def Xform "cart" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        float physics:mass = 1
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def "visuals" (
+            instanceable = true
+            prepend references = @./Props/instanceable_meshes.usd@</cartpole/cart/visuals>
+        )
+        {
+        }
+
+        def "collisions" (
+            instanceable = true
+            prepend references = @./Props/instanceable_meshes.usd@</cartpole/cart/collisions>
+        )
+        {
+        }
+
+        def PhysicsRevoluteJoint "cart_to_pole" (
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0
+            float drive:angular:physics:maxForce = 1000
+            float drive:angular:physics:stiffness = 0
+            uniform token drive:angular:physics:type = "force"
+            uniform token physics:axis = "X"
+            rel physics:body0 = </cartpole/cart>
+            rel physics:body1 = </cartpole/pole>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0.12, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:jointFriction = 0
+            float physxJoint:maxJointVelocity = 458.36624
+        }
+    }
+
+    def Xform "pole" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        point3f physics:centerOfMass = (0, 0, 0.47)
+        float physics:mass = 1
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0.11999999731779099, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def "visuals" (
+            instanceable = true
+            prepend references = @./Props/instanceable_meshes.usd@</cartpole/pole/visuals>
+        )
+        {
+        }
+
+        def "collisions" (
+            instanceable = true
+            prepend references = @./Props/instanceable_meshes.usd@</cartpole/pole/collisions>
+        )
+        {
+        }
+    }
+}
+
