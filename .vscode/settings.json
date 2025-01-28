@@ -1,10 +1,18 @@
 {
     "python.analysis.extraPaths": [
-        "./IsaacLab/source/extensions/omni",
-        "./IsaacLab/source/extensions/omni.isaac",
-        "./IsaacLab/source/extensions/omni.isaac.lab",
-        "./IsaacLab/source/extensions/omni.isaac.lab_tasks",
-        "./IsaacLab/source/apps/isaaclab.python.kit",
-        "./IsaacLab/source/extensions/omni.isaac.lab_assets",
+        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab_assets",
+        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab_tasks",
+        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab",
+        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.core"
+
+    ],
+    "spellright.language": [
+        "en-US-10-1."
+    ],
+    "spellright.documentTypes": [
+        "markdown",
+        "latex",
+        "plaintext",
+        "python"
     ]
 }

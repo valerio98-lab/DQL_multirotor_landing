@@ -6,9 +6,8 @@
 from __future__ import annotations
 
 import gymnasium as gym
-import torch
-
 import omni.isaac.lab.sim as sim_utils
+import torch
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.envs.ui import BaseEnvWindow
@@ -24,13 +23,13 @@ from omni.isaac.lab.utils.math import subtract_frame_transforms
 ##
 from omni.isaac.lab_assets import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
-from .cfg.iw_hub_cfg import IW_HUB_CFG  # isort: skip
+from lab_assets.agent import IW_HUB_CFG  # isort: skip
 
 
-class QuadcopterEnvWindow(BaseEnvWindow):
-    """Window manager for the Quadcopter environment."""
+class QuadrotorEnvWindow(BaseEnvWindow):
+    """Window manager for the Quadrotor environment."""
 
-    def __init__(self, env: QuadcopterEnv, window_name: str = "IsaacLab"):
+    def __init__(self, env: QuadrotorEnv, window_name: str = "IsaacLab"):
         """Initialize the window.
 
         Args:
@@ -48,7 +47,7 @@ class QuadcopterEnvWindow(BaseEnvWindow):
 
 
 @configclass
-class QuadcopterEnvCfg(DirectRLEnvCfg):
+class QuadrotorEnvCfg(DirectRLEnvCfg):
     # env
     episode_length_s = 800.0
     decimation = 2
@@ -57,7 +56,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     state_space = 0
     debug_vis = True
 
-    ui_window_class_type = QuadcopterEnvWindow
+    ui_window_class_type = QuadrotorEnvWindow
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -103,10 +102,10 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     distance_to_goal_reward_scale = 15.0
 
 
-class QuadcopterEnv(DirectRLEnv):
-    cfg: QuadcopterEnvCfg
+class QuadrotorEnv(DirectRLEnv):
+    cfg: QuadrotorEnvCfg
 
-    def __init__(self, cfg: QuadcopterEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: QuadrotorEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # Total thrust and moment applied to the base of the quadcopter

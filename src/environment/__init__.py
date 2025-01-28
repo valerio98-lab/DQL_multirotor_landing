@@ -1,30 +1,19 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 """
 Quacopter environment.
 """
 
 import gymnasium as gym
 
-from . import agents
-
-
 ##
 # Register Gym environments.
 ##
 
-
 gym.register(
-    id="direct_quadcopter_v0",
-    entry_point=f"{__name__}.direct_env:QuadcopterEnv",
+    # https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/register_rl_env_gym.html#:~:text=The%20id%20argument,Anymal-C-v0.
+    id="Isaac-Quadrotor-Landing-V0",
+    entry_point=f"{__name__}.direct_env:QuadrotorEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.direct_env:QuadcopterEnvCfg",
-        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:QuadcopterPPORunnerCfg",
-        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+        "env_cfg_entry_point": f"{__name__}.direct_env:QuadrotorEnvCfg",
     },
 )
