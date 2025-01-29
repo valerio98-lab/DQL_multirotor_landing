@@ -3,7 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 import gymnasium as gym
 import omni.isaac.lab.sim as sim_utils
@@ -13,11 +16,11 @@ from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.envs.ui import BaseEnvWindow
 from omni.isaac.lab.markers import VisualizationMarkers
 from omni.isaac.lab.scene import InteractiveSceneCfg
+from omni.isaac.lab.sensors import RayCaster, RayCasterCfg, patterns
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import subtract_frame_transforms
-from omni.isaac.lab.sensors import RayCasterCfg, RayCaster, patterns
 
 ##
 # Pre-defined configs
@@ -38,7 +41,7 @@ class QuadrotorEnvWindow(BaseEnvWindow):
             window_name: The name of the window. Defaults to "IsaacLab".
         """
         # initialize base window
-        super().__init__(env, window_name)
+        super().__init__(env, window_name)  # type: ignore
         # add custom UI elements
         with self.ui_window_elements["main_vstack"]:
             with self.ui_window_elements["debug_frame"]:
@@ -90,12 +93,12 @@ class QuadrotorEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
 
     # agent
-    agent: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Agent")
+    agent: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Agent")  # type: ignore
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
     ## target
-    target: ArticulationCfg = IW_HUB_CFG.replace(prim_path="/World/envs/env_.*/Target")
+    target: ArticulationCfg = IW_HUB_CFG.replace(prim_path="/World/envs/env_.*/Target")  # type: ignore
 
     height: RayCasterCfg = RayCasterCfg(
         prim_path="/World/envs/env_.*/Agent/body",
@@ -113,6 +116,29 @@ class QuadrotorEnvCfg(DirectRLEnvCfg):
     distance_to_goal_reward_scale = 15.0
 
 
+@dataclass
+class Observations:
+    agent_position: torch.Tensor
+    agent_linear_velocity: torch.Tensor
+    agent_angular_velocity: torch.Tensor
+
+    target_position: torch.Tensor
+    target_velocity: torch.Tensor
+
+    def __repr__(self) -> str:
+        return str(self.__dict__)
+
+
+# print(
+#     Observations(
+#         torch.tensor(2),
+#         torch.tensor(2),
+#         torch.tensor(2),
+#         torch.tensor(2),
+#         torch.tensor(2),
+#     )
+# )
+# exit()
 class QuadrotorEnv(DirectRLEnv):
     cfg: QuadrotorEnvCfg
 
@@ -183,22 +209,17 @@ class QuadrotorEnv(DirectRLEnv):
         desired_pos_b, _ = subtract_frame_transforms(
             self._robot.data.root_state_w[:, :3], self._robot.data.root_state_w[:, 3:7], self._desired_pos_w
         )
-        agent_observation = torch.cat(
-            [
-                self._robot.data.root_lin_vel_b,
-                self._robot.data.root_ang_vel_b,
-                self._robot.data.projected_gravity_b,
-                self._robot.data.root_state_w[:, :3],
-                desired_pos_b,
-            ],
-            dim=-1,
+        observation = Observations(
+            self._robot.data.root_pos_w.round(decimals=4),
+            self._robot.data.root_lin_vel_w.round(decimals=4),
+            self._robot.data.root_ang_vel_w.round(),
+            self._target.data.root_pos_w.round(),
+            self._target.data.root_lin_vel_w.round(),
         )
-        observations = {
-            "agent_observation": agent_observation,
-            "height": torch.max(self._sensor.data.ray_hits_w[..., -1]).item(),
-            "height_from_ground": self._robot.data.root_state_w[:, 2],
+        observation = {
+            "observation": observation,
         }
-        return observations
+        return observation
 
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_lin_vel_b), dim=1)
@@ -242,8 +263,8 @@ class QuadrotorEnv(DirectRLEnv):
         extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
         self.extras["log"].update(extras)
 
-        self._robot.reset(env_ids)
-        super()._reset_idx(env_ids)
+        self._robot.reset(env_ids)  # type: ignore
+        super()._reset_idx(env_ids)  # type: ignore
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
@@ -258,15 +279,15 @@ class QuadrotorEnv(DirectRLEnv):
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         default_root_state = self._robot.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
-        self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
-        self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+        self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)  # type: ignore
+        self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)  # type: ignore
+        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)  # type: ignore
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first tome
         if debug_vis:
             if not hasattr(self, "goal_pos_visualizer"):
-                marker_cfg = CUBOID_MARKER_CFG.copy()
+                marker_cfg = CUBOID_MARKER_CFG.copy()  # type: ignore
                 marker_cfg.markers["cuboid"].size = (0.05, 0.05, 0.05)
                 # -- goal pose
                 marker_cfg.prim_path = "/Visuals/Command/goal_position"

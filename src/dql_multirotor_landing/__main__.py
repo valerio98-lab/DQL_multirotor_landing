@@ -76,12 +76,10 @@ def main():
 
         with torch.inference_mode():
             # sample actions from -1 to 1
-            actions = torch.tensor([[0.07, 0.0, 0.0, 0.0, 20.0, 0.5]], device=env.unwrapped.device)
+            actions = torch.tensor([[0.07, -0.0001, 0.0, 0.0, 0.02, 0.5]], device=env.unwrapped.device)  # type: ignore
             # apply actions
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
-            print("Osservazione: ", observation["agent_observation"])
-            print("Altezza: ", observation["height"])
-            print("Altezza dal frame: ", observation["height_from_ground"])
+            print(f"Posizione agente: {observation['observation'].agent_position}")
 
     # close the simulator
     env.close()
