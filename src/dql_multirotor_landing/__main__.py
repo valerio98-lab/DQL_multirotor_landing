@@ -26,6 +26,7 @@ from omni.isaac.lab_tasks.utils import parse_env_cfg
 
 # Register the environment
 import environment  # noqa: F401
+from dql_multirotor_landing.pid import PIDController
 
 
 @dataclass
@@ -69,17 +70,35 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     observation, info = env.reset()
+    # print(observation)
+    # print(observation["observation"].agent_position.shape)
+    pid_controller = PIDController(set_point=[5, 0])
+    height = observation["observation"].agent_position[0, 2]
+    yaw = observation["observation"].agent_angular_velocity[0, 2]
+    thrust, yaw = pid_controller.output([height, yaw])
 
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
-
         with torch.inference_mode():
             # sample actions from -1 to 1
-            actions = torch.tensor([[0.07, -0.0001, 0.0, 0.0, 0.02, 0.5]], device=env.unwrapped.device)  # type: ignore
+            actions = Actions(
+                thrust.item(),
+                0.0,
+                0.0,
+                yaw.item(),
+                0.02,
+                0.5,
+            ).to_tensor(device=env.unwrapped.device)  # type: ignore
+
             # apply actions
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
-            print(f"Posizione agente: {observation['observation'].agent_position}")
+            # print(f"Posizione agente: {observation['observation'].agent_position}")
+            height = observation["observation"].agent_position[0, 2]
+            yaw = observation["observation"].agent_angular_velocity[0, 2]
+            print(height, yaw)
+            thrust, yaw = pid_controller.output([height, yaw])
+            # print(thrust, yaw)
 
     # close the simulator
     env.close()

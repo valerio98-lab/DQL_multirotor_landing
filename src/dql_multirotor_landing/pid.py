@@ -1,9 +1,12 @@
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 
 
 class PIDController:
+    """Pid controller that controls `height` and `yaw`"""
+
     def __init__(
         self,
         kp: Any = [5, 8],
@@ -19,20 +22,21 @@ class PIDController:
         self.kp = torch.tensor(kp).to(self.device)
         self.ki = torch.tensor(ki).to(self.device)
         self.kd = torch.tensor(kd).to(self.device)
-        self.set_point = set_point
+        self.set_point = torch.tensor(set_point).to(self.device)
         self.windup_max = torch.tensor(windup_max).to(self.device)
 
-        self.p_term = torch.zeros_like(self.kp).to(self.device)
-        self.i_term = torch.zeros_like(self.kp).to(self.device)
-        self.d_term = torch.zeros_like(self.kp).to(self.device)
+        self.p_term = torch.zeros_like(self.kp).to(self.device).float()
+        self.i_term = torch.zeros_like(self.kp).to(self.device).float()
+        self.d_term = torch.zeros_like(self.kp).to(self.device).float()
 
         self.sample_time = sample_time
         self.last_error = torch.zeros_like(self.kp).to(self.device)
         self.last_y = torch.zeros_like(self.kp).to(self.device)
 
     def output(self, y_measured):
+        y_measured = torch.tensor(y_measured).to(self.device)
         # Compute the current error
-        error = self.set_point - torch.tensor(y_measured).to(self.device)
+        error = self.set_point - y_measured
 
         # Get the PID values
         self.p_term = self.kp * error
@@ -46,5 +50,11 @@ class PIDController:
         # Salvataggio stati
         self.last_error = error
         self.last_y = y_measured
+        result = self.p_term + self.i_term + self.d_term
+        min_val, max_val = result.min(), result.max()
+        print(result)
+        return F.sigmoid(result)
 
-        return self.p_term + self.i_term + self.d_term
+
+a, b = PIDController().output(([10, 10]))
+print(a.item(), b.item())
