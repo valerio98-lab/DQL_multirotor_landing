@@ -22,7 +22,7 @@ from omni.isaac.lab.sensors import RayCasterCfg, RayCaster, patterns
 ##
 # Pre-defined configs
 ##
-from omni.isaac.lab_assets import CRAZYFLIE_CFG  # isort: skip
+from lab_assets.agent import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
 from lab_assets.target import IW_HUB_CFG  # isort: skip
 
@@ -218,7 +218,7 @@ class QuadrotorEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 200.0)
+        died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 10.0)
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
