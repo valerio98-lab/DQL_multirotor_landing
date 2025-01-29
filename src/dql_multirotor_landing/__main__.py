@@ -10,7 +10,7 @@ parser.add_argument("--task", type=str, default="Isaac-Quadrotor-Landing-V0", he
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
-args_cli.headless = True
+args_cli.headless = False
 # launch omniverse app
 
 app_launcher = AppLauncher(args_cli)
@@ -79,7 +79,9 @@ def main():
             actions = torch.tensor([[0.07, 0.0, 0.0, 0.0, 20.0, 0.5]], device=env.unwrapped.device)
             # apply actions
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
-            print(observation["agent_observation"])
+            print("Osservazione: ", observation["agent_observation"])
+            print("Altezza: ", observation["height"])
+            print("Altezza dal frame: ", observation["height_from_ground"])
 
     # close the simulator
     env.close()

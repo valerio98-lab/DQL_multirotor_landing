@@ -17,13 +17,14 @@ from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import subtract_frame_transforms
+from omni.isaac.lab.sensors import RayCasterCfg, RayCaster, patterns
 
 ##
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
-from lab_assets.agent import IW_HUB_CFG  # isort: skip
+from lab_assets.target import IW_HUB_CFG  # isort: skip
 
 
 class QuadrotorEnvWindow(BaseEnvWindow):
@@ -96,6 +97,16 @@ class QuadrotorEnvCfg(DirectRLEnvCfg):
     ## target
     target: ArticulationCfg = IW_HUB_CFG.replace(prim_path="/World/envs/env_.*/Target")
 
+    height: RayCasterCfg = RayCasterCfg(
+        prim_path="/World/envs/env_.*/Agent/body",
+        update_period=0.02,
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 0.0)),
+        attach_yaw_only=True,
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=(1.6, 1.0)),
+        debug_vis=True,
+        mesh_prim_paths=["/World/ground"],
+    )
+
     # reward scales
     lin_vel_reward_scale = -0.05
     ang_vel_reward_scale = -0.01
@@ -114,7 +125,7 @@ class QuadrotorEnv(DirectRLEnv):
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
-        self._desired_pos_w[:, 2] = 5.0
+        # self._desired_pos_w[:, 2] = 5.0
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -139,8 +150,10 @@ class QuadrotorEnv(DirectRLEnv):
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.agent)
         self._target = Articulation(self.cfg.target)
+        self._sensor = RayCaster(self.cfg.height)
         self.scene.articulations["agent"] = self._robot
         self.scene.articulations["target"] = self._target
+        self.scene.sensors["height"] = self._sensor
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -148,6 +161,7 @@ class QuadrotorEnv(DirectRLEnv):
         # clone, filter, and replicate
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
+
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
@@ -169,16 +183,21 @@ class QuadrotorEnv(DirectRLEnv):
         desired_pos_b, _ = subtract_frame_transforms(
             self._robot.data.root_state_w[:, :3], self._robot.data.root_state_w[:, 3:7], self._desired_pos_w
         )
-        obs = torch.cat(
+        agent_observation = torch.cat(
             [
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_ang_vel_b,
                 self._robot.data.projected_gravity_b,
+                self._robot.data.root_state_w[:, :3],
                 desired_pos_b,
             ],
             dim=-1,
         )
-        observations = {"policy": obs}
+        observations = {
+            "agent_observation": agent_observation,
+            "height": torch.max(self._sensor.data.ray_hits_w[..., -1]).item(),
+            "height_from_ground": self._robot.data.root_state_w[:, 2],
+        }
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
@@ -199,7 +218,7 @@ class QuadrotorEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 10.0)
+        died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 200.0)
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
