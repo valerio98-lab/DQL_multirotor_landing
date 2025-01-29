@@ -94,7 +94,8 @@ class QuadrotorEnvCfg(DirectRLEnvCfg):
 
     # agent
     agent: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Agent")  # type: ignore
-    thrust_to_weight = 1.9
+    # TODO: ciucciame le palle (o ricordate me raccomando)
+    thrust_to_weight = 1.9  # 1.9
     moment_scale = 0.01
 
     ## target
@@ -129,16 +130,6 @@ class Observations:
         return str(self.__dict__)
 
 
-# print(
-#     Observations(
-#         torch.tensor(2),
-#         torch.tensor(2),
-#         torch.tensor(2),
-#         torch.tensor(2),
-#         torch.tensor(2),
-#     )
-# )
-# exit()
 class QuadrotorEnv(DirectRLEnv):
     cfg: QuadrotorEnvCfg
 
@@ -195,8 +186,8 @@ class QuadrotorEnv(DirectRLEnv):
     #############################VENDITTELLI
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._actions = actions.clone().clamp(-1.0, 1.0)
-        self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
+        self._actions = actions.clone()  # .clamp(-1.0, 1.0)
+        self._thrust[:, 0, 2] = self._actions[:, 0] * self._robot_weight  # * (self._actions[:, 0] + 1.0) / 2.0
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:4]
         self._target_action = self._actions[:, 4:6] * self._target_mass
 

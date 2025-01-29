@@ -72,7 +72,7 @@ def main():
     observation, info = env.reset()
     # print(observation)
     # print(observation["observation"].agent_position.shape)
-    pid_controller = PIDController(set_point=[5, 0])
+    pid_controller = PIDController(set_point=[2, 0])
     height = observation["observation"].agent_position[0, 2]
     yaw = observation["observation"].agent_angular_velocity[0, 2]
     thrust, yaw = pid_controller.output([height, yaw])
@@ -82,24 +82,31 @@ def main():
         # run everything in inference mode
         with torch.inference_mode():
             # sample actions from -1 to 1
+            # apply actions
+
             actions = Actions(
+                # ths[iteration],
                 thrust.item(),
                 0.0,
                 0.0,
                 yaw.item(),
                 0.02,
                 0.5,
-            ).to_tensor(device=env.unwrapped.device)  # type: ignore
+            ).to_tensor(
+                device=env.unwrapped.device
+            )  # type: ignore
 
-            # apply actions
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
-            # print(f"Posizione agente: {observation['observation'].agent_position}")
+            print("Height: ", height)
+
+            if _terminated:
+                print("Bella ciciolè: ", height)
+                # pid_controller.reset()
+
             height = observation["observation"].agent_position[0, 2]
             yaw = observation["observation"].agent_angular_velocity[0, 2]
-            print(height, yaw)
             thrust, yaw = pid_controller.output([height, yaw])
-            # print(thrust, yaw)
-
+            print(f"height: {height}, thrust: {thrust.item()}")
     # close the simulator
     env.close()
 

@@ -16,12 +16,12 @@ class PIDController:
         device="cpu",
         *,
         windup_max=10,
-        sample_time=0.016,
+        sample_time=0.02,
     ):
         self.device = device
         self.kp = torch.tensor(kp).to(self.device)
-        self.ki = torch.tensor(ki).to(self.device)
-        self.kd = torch.tensor(kd).to(self.device)
+        self.ki = torch.tensor(kp).to(self.device)
+        self.kd = torch.tensor(kp).to(self.device)
         self.set_point = torch.tensor(set_point).to(self.device)
         self.windup_max = torch.tensor(windup_max).to(self.device)
 
@@ -51,9 +51,15 @@ class PIDController:
         self.last_error = error
         self.last_y = y_measured
         result = self.p_term + self.i_term + self.d_term
-        min_val, max_val = result.min(), result.max()
-        print(result)
-        return F.sigmoid(result)
+        # print(f"Result: {result}, I_term: {self.i_term}")
+        return result
+
+    def reset(self):
+        self.p_term = torch.zeros_like(self.kp).to(self.device).float()
+        self.i_term = torch.zeros_like(self.ki).to(self.device).float()
+        self.d_term = torch.zeros_like(self.kd).to(self.device).float()
+        self.last_error = torch.zeros_like(self.kp).to(self.device)
+        self.last_y = torch.zeros_like(self.kp).to(self.device)
 
 
 a, b = PIDController().output(([10, 10]))
