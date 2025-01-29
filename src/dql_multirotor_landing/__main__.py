@@ -20,10 +20,37 @@ import gymnasium as gym
 import torch
 
 import omni.isaac.lab_tasks  # isort: skip  # noqa: F401
+from dataclasses import dataclass
+
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 
 # Register the environment
 import environment  # noqa: F401
+
+
+@dataclass
+class Actions:
+    thrust: float
+    roll: float
+    pitch: float
+    yaw: float
+    left_wheel: float
+    right_wheel: float
+
+    def to_tensor(self, device):
+        return torch.tensor(
+            [
+                [
+                    self.thrust,
+                    self.roll,
+                    self.pitch,
+                    self.yaw,
+                    self.left_wheel,
+                    self.right_wheel,
+                ]
+            ],
+            device=device,
+        )
 
 
 def main():
@@ -41,7 +68,8 @@ def main():
     print(f"[INFO]: Gym observation space: {env.observation_space}")
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
-    env.reset()
+    observation, info = env.reset()
+
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
@@ -50,7 +78,9 @@ def main():
             # sample actions from -1 to 1
             actions = torch.tensor([[0.07, 0.0, 0.0, 0.0, 20.0, 0.5]], device=env.unwrapped.device)
             # apply actions
-            env.step(actions)
+            observation, _reward, _terminated, _truncated, _info = env.step(actions)
+            print(observation["agent_observation"])
+
     # close the simulator
     env.close()
 
