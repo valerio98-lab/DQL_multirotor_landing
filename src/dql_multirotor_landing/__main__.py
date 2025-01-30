@@ -24,9 +24,9 @@ from dataclasses import dataclass
 
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 
-# Register the environment
-import environment  # noqa: F401
+
 from dql_multirotor_landing.pid import PIDController
+from dql_multirotor_landing.environment.moving_platform import MovingPlatform
 
 
 @dataclass
@@ -65,49 +65,49 @@ def main():
     )
     # create environment"Isaac-Quadrotor-Landing-V0"
     env = gym.make(id="Isaac-Quadrotor-Landing-V0", cfg=env_cfg)
-    # prit info (this is vectorized environment)
+
     print(f"[INFO]: Gym observation space: {env.observation_space}")
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     observation, info = env.reset()
-    # print(observation)
-    # print(observation["observation"].agent_position.shape)
-    pid_controller = PIDController(set_point=[2, 0])
-    height = observation["observation"].agent_position[0, 2]
-    yaw = observation["observation"].agent_angular_velocity[0, 2]
-    thrust, yaw = pid_controller.output([height, yaw])
+
+    # Controllers
+    pid_controller = PIDController(set_point=[3, 0])
+    target_controller = MovingPlatform()
 
     # simulate environment
+    iteration = 0
     while simulation_app.is_running():
-        # run everything in inference mode
         with torch.inference_mode():
-            # sample actions from -1 to 1
-            # apply actions
+            height = observation["observation"].relative_position[0, 2]
+            yaw = observation["observation"].relative_acceleration[0, 2]
 
+            _, v_mp, _, w_mp = target_controller.compute_wheel_velocity(dt=0.02)
+            if (-height) < 0.3:
+                thrust = torch.tensor(0.0)
+            else:
+                thrust, yaw = pid_controller.output([-height, yaw])
             actions = Actions(
-                # ths[iteration],
                 thrust.item(),
                 0.0,
                 0.0,
-                yaw.item(),
-                0.02,
-                0.5,
-            ).to_tensor(
-                device=env.unwrapped.device
-            )  # type: ignore
+                0.0,
+                0.0,
+                0.0,
+            ).to_tensor(device=env.unwrapped.device)
 
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
-            print("Height: ", height)
+            # print("Height: ", height)
 
             if _terminated:
-                print("Bella ciciolè: ", height)
-                # pid_controller.reset()
+                pid_controller.reset()
 
-            height = observation["observation"].agent_position[0, 2]
-            yaw = observation["observation"].agent_angular_velocity[0, 2]
-            thrust, yaw = pid_controller.output([height, yaw])
-            print(f"height: {height}, thrust: {thrust.item()}")
-    # close the simulator
+            # height = observation["observation"].agent_position[0, 2]
+            # yaw = observation["observation"].agent_angular_velocity[0, 2]
+            # thrust, yaw = pid_controller.output([height, yaw])
+            print(f"height: {height}, thrust: {thrust.item()}, yaw: {yaw.item()}")
+            # print("v_mp: ", height)
+
     env.close()
 
 

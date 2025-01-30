@@ -29,6 +29,8 @@ from lab_assets.agent import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
 from lab_assets.target import IW_HUB_CFG  # isort: skip
 
+XMAX, YMAX, ZMAX = 9.0, 9.0, 5.0
+
 
 class QuadrotorEnvWindow(BaseEnvWindow):
     """Window manager for the Quadrotor environment."""
@@ -94,8 +96,8 @@ class QuadrotorEnvCfg(DirectRLEnvCfg):
 
     # agent
     agent: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Agent")  # type: ignore
-    # TODO: ciucciame le palle (o ricordate me raccomando)
-    thrust_to_weight = 1.9  # 1.9
+
+    thrust_to_weight = 1.0  # 1.9
     moment_scale = 0.01
 
     ## target
@@ -119,12 +121,10 @@ class QuadrotorEnvCfg(DirectRLEnvCfg):
 
 @dataclass
 class Observations:
-    agent_position: torch.Tensor
-    agent_linear_velocity: torch.Tensor
-    agent_angular_velocity: torch.Tensor
-
-    target_position: torch.Tensor
-    target_velocity: torch.Tensor
+    relative_position: torch.Tensor
+    relative_velocity: torch.Tensor
+    relative_acceleration: torch.Tensor
+    relative_orientation: torch.Tensor
 
     def __repr__(self) -> str:
         return str(self.__dict__)
@@ -140,9 +140,13 @@ class QuadrotorEnv(DirectRLEnv):
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
+
+        ## Fly zone
+        self._fly_zone = torch.tensor([XMAX, YMAX, ZMAX], device=self.device)
+
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
-        # self._desired_pos_w[:, 2] = 5.0
+
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -152,29 +156,31 @@ class QuadrotorEnv(DirectRLEnv):
                 "distance_to_goal",
             ]
         }
-        # Get specific body indices of the agent
-        self._body_id = self._robot.find_bodies("body")[0]
-        self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
+        # Get specifics of the agent
+        self._body_id = self._agent.find_bodies("body")[0]
+        self._agent_masses = self._agent.root_physx_view.get_masses()[0]
         self._gravity_magnitude = torch.tensor(self.sim.cfg.gravity, device=self.device).norm()
-        self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
+        self._agent_weight = (self._agent_masses.sum() * self._gravity_magnitude).item()
 
+        # Get specifics of the target
         self._joint_id = self._target.find_joints(".*wheel_joint")[0]
-        self._target_mass = self._target.root_physx_view.get_masses()[0].sum()
+        self._target_masses = self._target.root_physx_view.get_masses()[0]
 
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
 
     def _setup_scene(self):
-        self._robot = Articulation(self.cfg.agent)
+        self._agent = Articulation(self.cfg.agent)
         self._target = Articulation(self.cfg.target)
         self._sensor = RayCaster(self.cfg.height)
-        self.scene.articulations["agent"] = self._robot
+        self.scene.articulations["agent"] = self._agent
         self.scene.articulations["target"] = self._target
         self.scene.sensors["height"] = self._sensor
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
+
         # clone, filter, and replicate
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
@@ -186,26 +192,53 @@ class QuadrotorEnv(DirectRLEnv):
     #############################VENDITTELLI
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._actions = actions.clone()  # .clamp(-1.0, 1.0)
-        self._thrust[:, 0, 2] = self._actions[:, 0] * self._robot_weight  # * (self._actions[:, 0] + 1.0) / 2.0
+        self._actions = actions.clone().clamp(-1.0, 1.0)
+        self._thrust[:, 0, 2] = self._actions[:, 0] * self._agent_weight * (self._actions[:, 0] + 1.0) / 2.0
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:4]
-        self._target_action = self._actions[:, 4:6] * self._target_mass
+        self._target_action = self._actions[:, 4:6] * self._target_masses.sum()
 
     def _apply_action(self):
-        self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
+        self._agent.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
         self._target.set_joint_velocity_target(self._target_action, joint_ids=self._joint_id)
 
     ###############################VENDITTELLI
+
+    def _com_acc(self, robot_acc: torch.Tensor, robot_masses: torch.Tensor) -> torch.Tensor:
+        """
+        Compute CoM acceleration as the mean of the body accelerations
+        """
+
+        weighted_acc = robot_acc * robot_masses
+        com_acc = torch.sum(weighted_acc, dim=1) / robot_masses.sum(dim=1)
+        return com_acc
+
     def _get_observations(self) -> dict:
-        desired_pos_b, _ = subtract_frame_transforms(
-            self._robot.data.root_state_w[:, :3], self._robot.data.root_state_w[:, 3:7], self._desired_pos_w
+        agent_position = self._agent.data.root_state_w[:, :3]
+        agent_orientation = self._agent.data.root_state_w[:, 3:7]
+        agent_velocity = self._agent.data.root_state_w[:, 7:10]
+        agent_com_acc = self._com_acc(
+            self._agent.data.body_acc_w[:, :, :3], self._agent_masses.view(1, -1, 1).to("cuda")
         )
+
+        target_position = self._target.data.root_state_w[:, :3]
+        target_orientation = self._target.data.root_state_w[:, 3:7]
+        target_velocity = self._target.data.root_state_w[:, 7:10]
+        target_com_acc = self._com_acc(
+            self._target.data.body_acc_w[:, :, :3], self._target_masses.view(1, -1, 1).to("cuda")
+        )
+
+        self.relative_pos_s, self.relative_orientation_s = subtract_frame_transforms(
+            agent_position, agent_orientation, target_position, target_orientation
+        )
+        self.relative_vel_s = target_velocity - agent_velocity
+
+        self.relative_acc_s = target_com_acc - agent_com_acc
+
         observation = Observations(
-            self._robot.data.root_pos_w.round(decimals=4),
-            self._robot.data.root_lin_vel_w.round(decimals=4),
-            self._robot.data.root_ang_vel_w.round(),
-            self._target.data.root_pos_w.round(),
-            self._target.data.root_lin_vel_w.round(),
+            relative_position=self.relative_pos_s,
+            relative_velocity=self.relative_vel_s,
+            relative_acceleration=self.relative_acc_s,
+            relative_orientation=self.relative_orientation_s,
         )
         observation = {
             "observation": observation,
@@ -213,14 +246,14 @@ class QuadrotorEnv(DirectRLEnv):
         return observation
 
     def _get_rewards(self) -> torch.Tensor:
-        lin_vel = torch.sum(torch.square(self._robot.data.root_lin_vel_b), dim=1)
-        ang_vel = torch.sum(torch.square(self._robot.data.root_ang_vel_b), dim=1)
-        distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_pos_w, dim=1)
-        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+        lin_vel = torch.sum(torch.square(self._agent.data.root_lin_vel_b), dim=1)
+        ang_vel = torch.sum(torch.square(self._agent.data.root_ang_vel_b), dim=1)
+        # distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._agent.data.root_pos_w, dim=1)
+        # distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
-            "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            # "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -229,18 +262,21 @@ class QuadrotorEnv(DirectRLEnv):
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        time_out = self.episode_length_buf >= self.max_episode_length - 1
-        # print(self._robot.data.root_pos_w[:, 2])
-        died = torch.logical_or(self._robot.data.root_pos_w[:, 2] < 0.1, self._robot.data.root_pos_w[:, 2] > 100.0)
+        time_out = self.episode_length_buf >= self.max_episode_length - 1  ##troncamento
+        # print(self._agent.data.root_pos_w[:, 2])
+        agent_position = self._agent.data.root_pos_w[:, :3]
+        died = torch.any(
+            torch.logical_or(agent_position > self._fly_zone, agent_position < -self._fly_zone)
+        )  ##terminazione
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
         if env_ids is None or len(env_ids) == self.num_envs:
-            env_ids = self._robot._ALL_INDICES
+            env_ids = self._agent._ALL_INDICES
 
         # Logging
         final_distance_to_goal = torch.linalg.norm(
-            self._desired_pos_w[env_ids] - self._robot.data.root_pos_w[env_ids], dim=1
+            self._desired_pos_w[env_ids] - self._agent.data.root_pos_w[env_ids], dim=1
         ).mean()
         extras = dict()
         for key in self._episode_sums.keys():
@@ -255,7 +291,7 @@ class QuadrotorEnv(DirectRLEnv):
         extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
         self.extras["log"].update(extras)
 
-        self._robot.reset(env_ids)  # type: ignore
+        self._agent.reset(env_ids)  # type: ignore
         super()._reset_idx(env_ids)  # type: ignore
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
@@ -267,13 +303,13 @@ class QuadrotorEnv(DirectRLEnv):
         self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
         self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
         # Reset robot state
-        joint_pos = self._robot.data.default_joint_pos[env_ids]
-        joint_vel = self._robot.data.default_joint_vel[env_ids]
-        default_root_state = self._robot.data.default_root_state[env_ids]
+        joint_pos = self._agent.data.default_joint_pos[env_ids]
+        joint_vel = self._agent.data.default_joint_vel[env_ids]
+        default_root_state = self._agent.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
-        self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)  # type: ignore
-        self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)  # type: ignore
-        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)  # type: ignore
+        self._agent.write_root_pose_to_sim(default_root_state[:, :7], env_ids)  # type: ignore
+        self._agent.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)  # type: ignore
+        self._agent.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)  # type: ignore
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first tome

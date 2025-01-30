@@ -29,7 +29,7 @@ IW_HUB_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(10.0, 0.0, 1.0),
+        pos=(0.0, 0.0, 0.0),
         joint_pos={
             ".*": 0.0,
         },
