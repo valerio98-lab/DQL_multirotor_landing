@@ -125,6 +125,7 @@ class Observations:
     relative_velocity: torch.Tensor
     relative_acceleration: torch.Tensor
     relative_orientation: torch.Tensor
+    target_position: torch.Tensor
 
     def __repr__(self) -> str:
         return str(self.__dict__)
@@ -226,7 +227,6 @@ class QuadrotorEnv(DirectRLEnv):
         target_com_acc = self._com_acc(
             self._target.data.body_acc_w[:, :, :3], self._target_masses.view(1, -1, 1).to("cuda")
         )
-
         self.relative_pos_s, self.relative_orientation_s = subtract_frame_transforms(
             agent_position, agent_orientation, target_position, target_orientation
         )
@@ -235,10 +235,11 @@ class QuadrotorEnv(DirectRLEnv):
         self.relative_acc_s = target_com_acc - agent_com_acc
 
         observation = Observations(
-            relative_position=self.relative_pos_s,
-            relative_velocity=self.relative_vel_s,
-            relative_acceleration=self.relative_acc_s,
-            relative_orientation=self.relative_orientation_s,
+            relative_position=self.relative_pos_s.round(decimals=3),
+            relative_velocity=self.relative_vel_s.round(decimals=3),
+            relative_acceleration=self.relative_acc_s.round(decimals=3),
+            relative_orientation=self.relative_orientation_s.round(decimals=3),
+            target_position=target_position.round(decimals=3),
         )
         observation = {
             "observation": observation,

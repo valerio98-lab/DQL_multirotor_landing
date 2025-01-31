@@ -70,9 +70,11 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     observation, info = env.reset()
+    print(f"[INFO]: Observation: {observation}")
+    height_set_point = observation["observation"].target_position[0, 2]
 
     # Controllers
-    pid_controller = PIDController(set_point=[3, 0])
+    pid_controller = PIDController(set_point=[height_set_point, 0])
     target_controller = MovingPlatform()
 
     # simulate environment
@@ -83,7 +85,7 @@ def main():
             yaw = observation["observation"].relative_acceleration[0, 2]
 
             _, v_mp, _, w_mp = target_controller.compute_wheel_velocity(dt=0.02)
-            if (-height) < 0.3:
+            if -height < 0:
                 thrust = torch.tensor(0.0)
             else:
                 thrust, yaw = pid_controller.output([-height, yaw])
@@ -92,8 +94,8 @@ def main():
                 0.0,
                 0.0,
                 0.0,
-                0.0,
-                0.0,
+                v_mp,
+                v_mp,
             ).to_tensor(device=env.unwrapped.device)
 
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
@@ -105,7 +107,7 @@ def main():
             # height = observation["observation"].agent_position[0, 2]
             # yaw = observation["observation"].agent_angular_velocity[0, 2]
             # thrust, yaw = pid_controller.output([height, yaw])
-            print(f"height: {height}, thrust: {thrust.item()}, yaw: {yaw.item()}")
+            # print(f"height: {height}, thrust: {thrust.item()}, yaw: {yaw.item()}")
             # print("v_mp: ", height)
 
     env.close()

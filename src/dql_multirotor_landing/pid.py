@@ -13,12 +13,14 @@ class PIDController:
         ki: Any = [4, 3],
         kd: Any = [6.5, 5],
         set_point: Any = [0, 0],
+        descent_rate: float = 0.1,
         device="cpu",
         *,
         windup_max=10,
-        sample_time=0.02,
+        sample_time=0.002,
     ):
         self.device = device
+        self.descent_rate = descent_rate
         self.kp = torch.tensor(kp).to(self.device)
         self.ki = torch.tensor(ki).to(self.device)
         self.kd = torch.tensor(kd).to(self.device)
@@ -35,26 +37,31 @@ class PIDController:
 
     def output(self, y_measured):
         y_measured = torch.tensor(y_measured).to(self.device)
-        # Compute the current error
+        current_measure = y_measured
+
+        # Decrease softly the set_point
+        # if torch.any(current_measure != self.set_point):
+        #     self.set_point = (current_measure - self.descent_rate) * self.sample_time
+        #     print("Set_point: ", self.set_point)
+        # # Compute the current error
         error = self.set_point - y_measured
 
         # Get the PID values
         self.p_term = self.kp * error
-        self.d_term = self.kd * (self.last_y - y_measured) / self.sample_time
+        self.d_term = self.kd * (error - self.last_error) / self.sample_time
         self.i_term += self.ki * error * self.sample_time
-        print("I_term: ", self.i_term)
+        # print("I_term: ", self.i_term)
 
         # TODO: Understand if it's needed.
         # Anti-windup
-        # self.i_term = torch.clamp(self.i_term, -self.windup_max, self.windup_max)
+        self.i_term = torch.clamp(self.i_term, -self.windup_max, self.windup_max)
 
         # Salvataggio stati
         self.last_error = error
         self.last_y = y_measured
         result = self.p_term + self.i_term + self.d_term
-        # print(f"Result: {result}, I_term: {self.i_term}")
-        limits = torch.tensor([[-200, 10], [-1, 1]])
-        result = torch.where(result < 0, torch.clamp_min(result, limits[:, 0]), torch.clamp_max(result, limits[:, 1]))
+        limits = torch.tensor([[-200, 200], [-1, 1]])
+        result = torch.clamp(result, min=limits[:, 0], max=limits[:, 1])
         return result
 
     def reset(self):
