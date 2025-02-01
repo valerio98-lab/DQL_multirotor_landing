@@ -70,12 +70,15 @@ class StateSpace:
         lim_vel: torch.Tensor,
         goal_acc: torch.Tensor,
         lim_acc: torch.Tensor,
+        r_success: float,
+        r_failure: float,
         device="cpu",
     ):
         self.p_max = p_max
         self.v_max = v_max
         self.a_max = a_max
         self.device = device
+        self.lim_pos = lim_pos
         self.normalized_gps = self.normalized_state(goal_pos, self.p_max)
         self.normalized_lps = self.normalized_state(lim_pos, self.p_max)
         self.normalized_gvl = self.normalized_state(goal_vel, self.v_max)
@@ -83,19 +86,24 @@ class StateSpace:
         self.normalized_gacc = self.normalized_state(goal_acc, self.a_max)
         self.normalized_lacc = self.normalized_state(lim_acc, self.a_max)
 
+        self.r_term = None
+        self.r_success = r_success
+        self.r_failure = r_failure
+        self.discretized_goal_state = torch.tensor([1, 1], device=self.device)
+
     def normalized_state(self, state: torch.Tensor, max_value):
         return torch.clip(state[0] / max_value, -1, 1).to(self.device)
 
     def d_f(self, continuos_state: torch.Tensor, x1, x2):
         print(continuos_state, x1, x2)
         if continuos_state >= -x2 and continuos_state < -x1:
-            discretized_state = 0  ##Close distance wrt the goal state
+            discretized_state = 0  ##Far distance wrt the goal state
 
         if continuos_state >= -x1 and continuos_state <= x1:
-            discretized_state = 1  ##Middle distance wrt the goal state
+            discretized_state = 1  ##Close distance wrt the goal state
 
         if continuos_state > x1 and continuos_state <= x2:
-            discretized_state = 2  ##Far distance wrt the goal state
+            discretized_state = 2  ##Middle distance wrt the goal state
 
         return discretized_state
 
@@ -118,9 +126,21 @@ class StateSpace:
             index=angle_index,
         )
 
+    def get_reward(self):
+        # rt = rp + rv + r_theta + rdur + rterm.
+        pass
 
-class Reward:
-    pass
+    def _get_terminal_term(self, state: DiscreteState, relative_pos: torch.Tensor, lim_pos: torch.Tensor):
+        actual_state = torch.tensor([state.position, state.velocity], device=self.device)
+        relative_pos = self.normalized_state(relative_pos, self.p_max)
+        lim_pos = self.normalized_state(lim_pos, self.p_max)
+
+        if torch.equal(actual_state, self.discretized_goal_state):
+            self.r_term = self.r_success
+        elif torch.abs(relative_pos[0]) > lim_pos[0]:
+            self.r_term = self.r_failure
+        else:
+            self.r_term = 0
 
 
 # if __name__ == "__main__":
