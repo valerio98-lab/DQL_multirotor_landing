@@ -85,6 +85,7 @@ def test_get_discretized_state(state_space):
         position=torch.tensor([0.3, 0.2, 0.1]),
         velocity=torch.tensor([0.2, 0.5, 2]),
         acceleration=torch.tensor([0.1, 1, 2]),
+        pitch_angle=None,
     )
 
     discrete_state = state_space.get_discretized_state(state=obs)
@@ -103,11 +104,17 @@ def test_get_reward(state_space):
     last_relative_vel = torch.tensor([0.4, 0.3, 0.2])
 
     current_obs = ContinuousState(
-        position=current_relative_pos, velocity=current_relative_vel, acceleration=torch.tensor([0.1, 1, 2])
+        position=current_relative_pos,
+        velocity=current_relative_vel,
+        acceleration=torch.tensor([0.1, 1, 2]),
+        pitch_angle=20,
     )
 
     last_obs = ContinuousState(
-        position=last_relative_pos, velocity=last_relative_vel, acceleration=torch.tensor([0.1, 1, 2])
+        position=last_relative_pos,
+        velocity=last_relative_vel,
+        acceleration=torch.tensor([0.1, 1, 2]),
+        pitch_angle=15.7,
     )
 
     state_space._set_last_state(last_obs)

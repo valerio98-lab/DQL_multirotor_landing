@@ -83,6 +83,7 @@ class ContinuousState:
     position: torch.Tensor
     velocity: torch.Tensor
     acceleration: torch.Tensor
+    pitch_angle: float
 
 
 class StateSpace:
@@ -120,7 +121,6 @@ class StateSpace:
         self.delta_t = 1 / self.parameters.fag
         self.delta_angle = self.parameters.delta_angle
         self.last_state: Optional[ContinuousState] = None
-        self.last_delta_angle = 0.0
 
         if not isinstance(self.last_state, ContinuousState) and self.last_state is not None:
             print(not isinstance(self.last_state, ContinuousState))
@@ -289,7 +289,7 @@ class StateSpace:
         r_v = torch.clip(self.w_v * relative_vel_reduction, -self.parameters.r_v_max, self.parameters.r_v_max)
 
         # orientation term r_theta and duration term r_dur
-        relative_theta_reduction = abs(self.delta_angle) - abs(self.last_delta_angle)
+        relative_theta_reduction = abs(current_continuous_state.pitch_angle) - abs(self.last_state.pitch_angle)
         r_theta = (self.w_theta * relative_theta_reduction) / self.parameters.angle_max / self.v_lim
         r_dur = self.parameters.w_dur * self.v_lim * self.delta_t
 
