@@ -26,26 +26,16 @@ class Parameters:
         self.r_v_max = 0
         self.r_theta_max = 0
         self.r_dur_max = 0
+        self.n_theta = 3
 
-        self.goal_pos: torch.Tensor = torch.tensor([0.5, 0.5, 0.5])
-        self.lim_pos: torch.Tensor = torch.tensor([0.5, 0.5, 0.5])
-        self.goal_vel: torch.Tensor = torch.tensor([0.5, 0.5, 0.5])
-        self.lim_vel: torch.Tensor = torch.tensor([0.5, 0.5, 0.5])
-        self.goal_acc: torch.Tensor = torch.tensor([0.5, 0.5, 0.5])
-        self.lim_acc: torch.Tensor = torch.tensor([0.5, 0.5, 0.5])
         self.r_success: float = 0
         self.r_failure: float = 0
         self.ka = 3
         self.platform_max_acc: float = 0.32
         self.gravity_magnitude: float = 9.81
         self.angle_max = self._get_angle_max()
+        self.delta_angle = self.angle_max / self.n_theta
 
-        self.norm_goal_pos = self._normalized_state(self.goal_pos, self.p_max)
-        self.norm_lim_pos = self._normalized_state(self.lim_pos, self.p_max)
-        self.norm_goal_vel = self._normalized_state(self.goal_vel, self.v_max)
-        self.norm_lim_vel = self._normalized_state(self.lim_vel, self.v_max)
-        self.norm_goal_acc = self._normalized_state(self.goal_acc, self.a_max)
-        self.norm_lim_acc = self._normalized_state(self.lim_acc, self.a_max)
 
     def _normalized_state(self, state: torch.Tensor, max_value):
         return torch.clip(state / max_value, -1, 1).to(self.device)

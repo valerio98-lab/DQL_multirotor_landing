@@ -1,5 +1,6 @@
 import torch
 from dataclasses import dataclass
+from typing import Optional
 from dql_multirotor_landing.parameters import Parameters
 
 
@@ -29,7 +30,7 @@ class ActionSpace:
         self.action_space_dim = action_space_dim
         self.device = device
         self.parameters = Parameters()
-        self.delta_angle = self.parameters.angle_max / self.action_space_dim
+        self.delta_angle = self.parameters.delta_angle
         self.angles_set = self._discretize_action_space()
 
     def _discretize_action_space(self):
@@ -74,7 +75,14 @@ class DiscreteState:
     position: int
     velocity: int
     acceleration: int
-    index: int
+    action_index: int
+
+
+@dataclass
+class ContinuousState:
+    position: torch.Tensor
+    velocity: torch.Tensor
+    acceleration: torch.Tensor
 
 
 class StateSpace:
@@ -92,6 +100,12 @@ class StateSpace:
 
     def __init__(
         self,
+        goal_pos: float,
+        p_lim: float,
+        goal_vel: float,
+        v_lim: float,
+        goal_acc: float,
+        a_lim: float,
         device="cpu",
     ):
         self.parameters = Parameters()
@@ -103,20 +117,47 @@ class StateSpace:
         self.w_v = self.parameters.w_v
         self.w_theta = self.parameters.w_theta
         self.w_dur = self.parameters.w_dur
+        self.delta_t = 1 / self.parameters.fag
+        self.delta_angle = self.parameters.delta_angle
+        self.last_state: Optional[ContinuousState] = None
+        self.last_delta_angle = 0.0
 
-        self.norm_goal_pos = self.parameters.norm_goal_pos
-        self.norm_lim_pos = self.parameters.norm_lim_pos
-        self.norm_goal_vel = self.parameters.norm_goal_vel
-        self.norm_lim_vel = self.parameters.norm_lim_vel
-        self.norm_goal_acc = self.parameters.norm_goal_acc
-        self.norm_lim_acc = self.parameters.norm_lim_acc
+        if not isinstance(self.last_state, ContinuousState) and self.last_state is not None:
+            print(not isinstance(self.last_state, ContinuousState))
+            print(not isinstance(self.last_state, None))
+            raise TypeError(
+                "last_state should be a ContinuousState (@dataclass) or None if no state is available at the current time step."
+            )
+
+        self.goal_pos = goal_pos
+        self.p_lim = p_lim
+        self.goal_vel = goal_vel
+        self.v_lim = v_lim
+        self.goal_acc = goal_acc
+        self.a_lim = a_lim
 
         self.r_term = None
         self.r_success = self.parameters.r_success
         self.r_failure = self.parameters.r_failure
         self.discretized_goal_state = torch.tensor([1, 1], device=self.device)
 
-    def d_f(self, continuos_state: torch.Tensor, min_value, max_value):
+    def _set_last_state(self, last_state: ContinuousState):
+        """
+        Sets the last state (`last_state`) for the class instance.
+
+        Args:
+            last_state (ContinuousState): The new state to assign. Must be an instance of ContinuousState.
+
+        Raises:
+            TypeError: If `last_state` is not an instance of ContinuousState.
+
+        """
+
+        if not isinstance(last_state, ContinuousState):
+            raise TypeError("last_state should be a ContinuousState (@dataclass)")
+        self.last_state = last_state
+
+    def d_f(self, continuos_state: torch.tensor, x1: float, x2: float):
         """
         Discretizes a continuous state value into one of three categories:
         - 0: Far from the goal state
@@ -125,17 +166,27 @@ class StateSpace:
 
         Args:
             continuous_state (torch.Tensor): The continuous state value.
-            x1 (torch.Tensor): The goal state boundary.
-            x2 (torch.Tensor): The maximum state boundary.
+            x1 float: The goal state boundary.
+            x2 float: The maximum state boundary.
 
         Returns:
             int: The discretized state index.
         """
-        discretized_state_x = continuos_state[0]
-        x1 = min_value[0]
-        x2 = max_value[0]
 
-        print(continuos_state, x1, x2)
+        discretized_state_x = continuos_state[0]
+
+        if x2 < x1:
+            raise ValueError(f"max_value {x2} should be greater than or equal to min_value {x1}")
+
+        if discretized_state_x > x2:
+            raise ValueError(
+                f"The x_dimension of the state {discretized_state_x} should be less than or equal to max_value {x2}"
+            )
+
+        if discretized_state_x < x1:
+            raise ValueError(
+                f"The x_dimension of the state {discretized_state_x} should be greater than or equal to min_value {x1}"
+            )
 
         if discretized_state_x >= -x2 and discretized_state_x < -x1:
             state = 0  ##Far distance wrt the goal state
@@ -148,75 +199,83 @@ class StateSpace:
 
         return state
 
-    # fmt: off
-    def get_discretized_state(
-        self, 
-        relative_pos: torch.Tensor, 
-        relative_vel: torch.Tensor, 
-        relative_acc: torch.Tensor = None, 
-        angle_index: int = None
-    ):  # fmt: on
-
+    def get_discretized_state(self, state: ContinuousState, discrete_action: int = None):
         """
         Converts a continuous state into a discretized state representation.
 
         Args:
-            relative_pos (torch.Tensor): Relative position.
-            relative_vel (torch.Tensor): Relative velocity.
-            relative_acc (torch.Tensor): Relative acceleration.
-            angle_index (int): The action index corresponding to the new angle assumes by the drone.
+            state ContinuousState(): an observation from the environment filled up with a relative position,
+            a relative velocity and a relative acc.
 
         Returns:
             DiscreteState: The discretized state.
         """
-        print(angle_index)
-        assert angle_index is not None, "The angle index should be provided"
+
+        relative_pos = state.position
+        relative_vel = state.velocity
+        relative_acc = state.acceleration
+        theta_index = None
 
         normalized_position = self.parameters._normalized_state(relative_pos, self.p_max)
         normalized_velocity = self.parameters._normalized_state(relative_vel, self.v_max)
         if relative_acc is not None:
             normalized_acc = self.parameters._normalized_state(relative_acc, self.a_max)
-
+        if discrete_action is not None:
+            theta_index = discrete_action
         return DiscreteState(
-            position=self.d_f(normalized_position, self.norm_goal_pos, self.norm_lim_pos),
-            velocity=self.d_f(normalized_velocity, self.norm_goal_vel, self.norm_lim_vel),
-            acceleration=self.d_f(normalized_acc, self.norm_goal_acc, self.norm_lim_acc),
-            index=angle_index,
+            position=self.d_f(normalized_position, self.goal_pos, self.p_lim),
+            velocity=self.d_f(normalized_velocity, self.goal_vel, self.v_lim),
+            acceleration=self.d_f(normalized_acc, self.goal_acc, self.a_lim),
+            action_index=theta_index,
         )
+
+    def get_max_reward(self):
+        """
+        Returns the maximum possible reward.
+
+        Returns:
+            float: The maximum reward.
+        """
+        r_p_max = abs(self.parameters.w_p) * self.v_lim * self.delta_t
+        r_v_max = abs(self.parameters.w_v) * self.a_lim * self.delta_t
+        r_theta_max = abs(self.parameters.w_theta) * self.v_lim * (self.delta_angle / self.parameters.angle_max)
+        r_dur_max = self.parameters.w_dur * self.v_lim * self.delta_t
+
+        return r_p_max + r_v_max + r_theta_max + r_dur_max
 
     def get_reward(
         self,
-        current_relative_pos: torch.Tensor,
-        current_relative_vel: torch.Tensor,
-        last_relative_pos: torch.Tensor,
-        last_relative_vel: torch.Tensor,
+        current_continuous_state: ContinuousState,
     ):
         """
-        Computes the reward for a given state transition.
+        Computes the reward for a given state transition leveraging the last state transition performed in the environment
+        For details look for section 3.3.6 of the paper.
 
         Args:
-            state (DiscreteState): The current discretized state.
-            current_relative_pos (torch.Tensor): The current relative position.
-            last_relative_pos (torch.Tensor): The previous relative position.
+            current_continuous_state (ContinuousState): The current observation from the environment.
 
         Returns:
             float: The computed reward.
         """
+        current_relative_pos = current_continuous_state.position
+        current_relative_vel = current_continuous_state.velocity
+        last_relative_pos = self.last_state.position
+        last_relative_vel = self.last_state.velocity
 
         current_relative_pos = self.parameters._normalized_state(current_relative_pos, self.parameters.p_max)
         last_relative_pos = self.parameters._normalized_state(last_relative_pos, self.parameters.p_max)
-        discrete_pos = self.d_f(current_relative_pos, self.norm_goal_pos, self.norm_lim_pos)
+        discrete_pos = self.d_f(current_relative_pos, self.goal_pos, self.p_lim)
 
         current_relative_vel = self.parameters._normalized_state(current_relative_vel, self.parameters.v_max)
         last_relative_vel = self.parameters._normalized_state(last_relative_vel, self.parameters.v_max)
-        discrete_vel = self.d_f(current_relative_vel, self.norm_goal_vel, self.norm_lim_vel)
+        discrete_vel = self.d_f(current_relative_vel, self.goal_vel, self.v_lim)
 
         actual_state = torch.tensor([discrete_pos, discrete_vel], device=self.device)
 
         # terminal term r_term
         if torch.equal(actual_state, self.discretized_goal_state):
             r_term = self.r_success
-        elif torch.abs(current_relative_pos) > self.parameters.norm_lim_pos:
+        elif torch.abs(current_relative_pos[0]) > self.p_lim:
             r_term = self.r_failure
         else:
             r_term = 0
@@ -230,8 +289,9 @@ class StateSpace:
         r_v = torch.clip(self.w_v * relative_vel_reduction, -self.parameters.r_v_max, self.parameters.r_v_max)
 
         # orientation term r_theta and duration term r_dur
-        r_theta = 0.0
-        r_dur = self.parameters.w_dur * self.parameters.norm_lim_vel[0] * (1 / self.parameters.fag)
+        relative_theta_reduction = abs(self.delta_angle) - abs(self.last_delta_angle)
+        r_theta = (self.w_theta * relative_theta_reduction) / self.parameters.angle_max / self.v_lim
+        r_dur = self.parameters.w_dur * self.v_lim * self.delta_t
 
         return (r_p + r_v + r_theta + r_dur + r_term).item()
 

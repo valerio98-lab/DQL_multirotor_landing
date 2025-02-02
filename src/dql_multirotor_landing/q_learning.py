@@ -152,24 +152,40 @@ For each curriculum_step in total_curriculum_steps:
         v_goal = β_v * v_lim  (Eq. 42)
         a_goal = β_a * a_lim  (Eq. 43)
 
-    `Pass the contractions to Valerio`
-    `Recieve from Valerio the max reward values`
+    `Pass the contractions to Valerio`: 
+        1. Initialize an object StateSpace
+        2. Pass to the object the contractions (p_lim, p_goal, etc...)
+    
+    `Recieve from Valerio the max reward values`:
+        reward_max = StateSpace.get_max_reward()
 
     If curriculum_step > 0:
         Scale Q-tables using Eq. (31) to transfer knowledge from previous step
 
     # Q-Learning with Double Q-Learning Algorithm
     For each episode in total_episodes:
-        Initialize state based on current curriculum step
-        Discretize initial state
+        
+        Initialize state based on current curriculum step 
+        Initialize the environment: 
+            1. obs = env.reset() ##Isaac env
+            2. continuous_state = ContinuousState(position=obs.position, etc...)
+            3. StateSpace.set_last_state(continuous_state) ##obs has to be a ContinuousState dataclass
+            4. discrete_state = StateSpace.get_discrete_state(obs) 
+
         
         For each step in episode_steps:
             With probability ε select a random action (exploration)
             Otherwise, select action with max Q-value (exploitation)
             
-            Execute action, observe reward and next state
+            (TODO: talk about how to select the action)
+
+            Execute action: 
+                1. obs = env.step(action) ##Isaac env
+                2. continuous_state = ContinuousState(position=obs.position, etc...)
+                3. reward = StateSpace.get_reward(continuous_state)
+                4. StateSpace.set_last_state(continuous_state) 
+                5. discrete_state = StateSpace.get_discretized_state(continuous_state)
         
-            Discretize next state
             
             Update learning rate using Eq. (30)
             
@@ -180,7 +196,7 @@ For each curriculum_step in total_curriculum_steps:
             
             # Check if goal state is reached or episode ends
             If goal_state_reached or episode_ends:
-                Break
+                Break   (TODO: talk about this condition for isaac and reward terms)
             
         Decay exploration rate ε as episode progresses
 """

@@ -5,6 +5,7 @@ from dql_multirotor_landing.environment.mdp import (
     StateSpace,
     DiscreteState,
     ActionSpace,
+    ContinuousState,
     INCREASING,
     DECREASING,
     NOTHING,
@@ -20,7 +21,7 @@ def parameters():
 @pytest.fixture
 def state_space():
     """Fixture for initializing the StateSpace instance."""
-    return StateSpace()
+    return StateSpace(goal_pos=0.5, p_lim=3, goal_vel=0.2, v_lim=2, goal_acc=0.0, a_lim=1)
 
 
 @pytest.fixture
@@ -72,18 +73,21 @@ def test_get_discrete_action(action_space):
 # ------------------------
 def test_d_f(state_space):
     """Test whether the d_f function correctly categorizes states."""
-    state = state_space.d_f(torch.tensor([0.1, 2, 0.2]), torch.randn(3), torch.randn(3))
 
-    assert state in [0, 1, 2], "Should be in the middle category (goal)"
+    state = state_space.d_f(torch.tensor([0.3, 0.2, 0.1]), 0.1, 1)
+
+    assert state in [0, 1, 2], "Should be in range [0, 2]"  # 0: far, 1: medium, 2: close
 
 
 def test_get_discretized_state(state_space):
     """Test whether the get_discretized_state function correctly maps continuous states to discrete ones."""
-    relative_pos = torch.tensor([0.3, 0.2, 0.1])
-    relative_vel = torch.tensor([0.2, 0.5, 2])
-    relative_acc = torch.tensor([0.1, 1, 2])
+    obs = ContinuousState(
+        position=torch.tensor([0.3, 0.2, 0.1]),
+        velocity=torch.tensor([0.2, 0.5, 2]),
+        acceleration=torch.tensor([0.1, 1, 2]),
+    )
 
-    discrete_state = state_space.get_discretized_state(relative_pos, relative_vel, relative_acc, angle_index=0)
+    discrete_state = state_space.get_discretized_state(state=obs)
 
     assert isinstance(discrete_state, DiscreteState), "Should return an instance of DiscreteState"
     assert 0 <= discrete_state.position <= 2, "Discrete position should be in range [0, 2]"
@@ -98,7 +102,17 @@ def test_get_reward(state_space):
     last_relative_pos = torch.tensor([0.4, 0.3, 0.2])
     last_relative_vel = torch.tensor([0.4, 0.3, 0.2])
 
-    reward = state_space.get_reward(current_relative_pos, current_relative_vel, last_relative_pos, last_relative_vel)
+    current_obs = ContinuousState(
+        position=current_relative_pos, velocity=current_relative_vel, acceleration=torch.tensor([0.1, 1, 2])
+    )
+
+    last_obs = ContinuousState(
+        position=last_relative_pos, velocity=last_relative_vel, acceleration=torch.tensor([0.1, 1, 2])
+    )
+
+    state_space._set_last_state(last_obs)
+
+    reward = state_space.get_reward(current_continuous_state=current_obs)
 
     print(reward)
     assert isinstance(reward, float), "Reward should be a float"
