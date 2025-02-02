@@ -24,9 +24,8 @@ from dataclasses import dataclass
 
 from omni.isaac.lab_tasks.utils import parse_env_cfg
 
-
-from dql_multirotor_landing.pid import PIDController
 from dql_multirotor_landing.environment.moving_platform import MovingPlatform
+from dql_multirotor_landing.pid import PIDController
 
 
 @dataclass
@@ -70,8 +69,9 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     observation, info = env.reset()
+
     print(f"[INFO]: Observation: {observation}")
-    height_set_point = observation["observation"].target_position[0, 2]
+    height_set_point = observation["target_position"][0, 2]
 
     # Controllers
     pid_controller = PIDController(set_point=[height_set_point, 0])
@@ -81,8 +81,8 @@ def main():
     iteration = 0
     while simulation_app.is_running():
         with torch.inference_mode():
-            height = observation["observation"].relative_position[0, 2]
-            yaw = observation["observation"].relative_acceleration[0, 2]
+            height = observation["relative_position"][0, 2]
+            yaw = observation["relative_acceleration"][0, 2]
 
             _, v_mp, _, w_mp = target_controller.compute_wheel_velocity(dt=0.02)
             if -height < 0:
@@ -99,6 +99,8 @@ def main():
             ).to_tensor(device=env.unwrapped.device)
 
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
+            print(observation)
+            exit()
             # print("Height: ", height)
 
             if _terminated:

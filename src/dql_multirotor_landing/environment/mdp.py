@@ -1,8 +1,9 @@
-import torch
 from dataclasses import dataclass
 from typing import Optional
-from dql_multirotor_landing.parameters import Parameters
 
+import torch
+
+from dql_multirotor_landing.parameters import Parameters
 
 INCREASING = 1
 DECREASING = -1
@@ -124,7 +125,7 @@ class StateSpace:
 
         if not isinstance(self.last_state, ContinuousState) and self.last_state is not None:
             print(not isinstance(self.last_state, ContinuousState))
-            print(not isinstance(self.last_state, None))
+            print(self.last_state is not None)
             raise TypeError(
                 "last_state should be a ContinuousState (@dataclass) or None if no state is available at the current time step."
             )
@@ -157,7 +158,7 @@ class StateSpace:
             raise TypeError("last_state should be a ContinuousState (@dataclass)")
         self.last_state = last_state
 
-    def d_f(self, continuos_state: torch.tensor, x1: float, x2: float):
+    def d_f(self, continuos_state: torch.Tensor, x1: float, x2: float):
         """
         Discretizes a continuous state value into one of three categories:
         - 0: Far from the goal state
@@ -199,7 +200,7 @@ class StateSpace:
 
         return state
 
-    def get_discretized_state(self, state: ContinuousState, discrete_action: int = None):
+    def get_discretized_state(self, state: ContinuousState, discrete_action: Optional[int] = None):
         """
         Converts a continuous state into a discretized state representation.
 
@@ -220,6 +221,7 @@ class StateSpace:
         normalized_velocity = self.parameters._normalized_state(relative_vel, self.v_max)
         if relative_acc is not None:
             normalized_acc = self.parameters._normalized_state(relative_acc, self.a_max)
+        # TODO: Else, if it's `None`, what happens ?
         if discrete_action is not None:
             theta_index = discrete_action
         return DiscreteState(
@@ -259,8 +261,9 @@ class StateSpace:
         """
         current_relative_pos = current_continuous_state.position
         current_relative_vel = current_continuous_state.velocity
-        last_relative_pos = self.last_state.position
-        last_relative_vel = self.last_state.velocity
+        # Ignores are needed because we cannot guarantee this is not None, check if it may cause a problem.
+        last_relative_pos = self.last_state.position  # type: ignore
+        last_relative_vel = self.last_state.velocity  # type:ignore
 
         current_relative_pos = self.parameters._normalized_state(current_relative_pos, self.parameters.p_max)
         last_relative_pos = self.parameters._normalized_state(last_relative_pos, self.parameters.p_max)
@@ -289,7 +292,9 @@ class StateSpace:
         r_v = torch.clip(self.w_v * relative_vel_reduction, -self.parameters.r_v_max, self.parameters.r_v_max)
 
         # orientation term r_theta and duration term r_dur
-        relative_theta_reduction = abs(current_continuous_state.pitch_angle) - abs(self.last_state.pitch_angle)
+        relative_theta_reduction = abs(current_continuous_state.pitch_angle) - abs(
+            self.last_state.pitch_angle  # type: ignore
+        )
         r_theta = (self.w_theta * relative_theta_reduction) / self.parameters.angle_max / self.v_lim
         r_dur = self.parameters.w_dur * self.v_lim * self.delta_t
 

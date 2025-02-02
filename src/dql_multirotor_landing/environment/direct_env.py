@@ -241,10 +241,12 @@ class QuadrotorEnv(DirectRLEnv):
             relative_orientation=self.relative_orientation_s.round(decimals=3),
             target_position=target_position.round(decimals=3),
         )
-        observation = {
-            "observation": observation,
-        }
-        return observation
+        # observation = {
+        #     "observation": observation,
+        # }
+        # TODO: Ask Valerio if he's okay with this.
+        # Avoids the ugly observation["observation"].field in favor of observation["field"]
+        return observation.__dict__
 
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._agent.data.root_lin_vel_b), dim=1)
