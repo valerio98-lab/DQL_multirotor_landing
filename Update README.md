@@ -1,6 +1,6 @@
 # DQL_multirotor_landing
 
-Implementation of Double Q-Learning with Curriculum Learning for autonomous UAV landing on a moving platform. The approach decomposes the landing task into sequential sub-tasks and applies state-space discretization to improve learning efficiency and maneuverability.
+Implementation of Double Q-Learning with Curriculum Learning for Autonomous UAV Landing on a Moving Platform using NVIDIA IsaacLab for Realistic Physics and Simulation. 
 
 ## Settingup with uv and VSCode on Linux
 
