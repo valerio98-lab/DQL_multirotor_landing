@@ -5,70 +5,17 @@ import torch
 
 from dql_multirotor_landing.parameters import Parameters
 
-INCREASING = 1
-DECREASING = -1
+INCREASING = 2
+DECREASING = 1
 NOTHING = 0
 
 
-class ActionSpace:
-    """
-    Represents the action space for the reinforcement learning agent,
-    where actions correspond to angle adjustments.
-
-    Attributes:
-        action_space_dim (int): The number of discrete actions available.
-        device (str): The computing device ('cpu' or 'cuda').
-        angles_set (torch.Tensor): The set of possible angle values.
-        delta_angle (float): The increment/decrement step for angle adjustments.
-        parameters (Parameters): The set of global parameters.
-    """
-
-    def __init__(
-        self,
-        action_space_dim: int = 3,
-        device="cpu",
-    ):
-        self.action_space_dim = action_space_dim
-        self.device = device
-        self.parameters = Parameters()
-        self.delta_angle = self.parameters.delta_angle
-        self.angles_set = self._discretize_action_space()
-
-    def _discretize_action_space(self):
-        """
-        Discretizes the angle space based on the max angle and the number of the hyperparameter n_theta.
-
-        Returns:
-            torch.Tensor: A tensor containing the set of discrete angles.
-        """
-
-        angle_values = torch.tensor(
-            [-self.parameters.angle_max + i * self.delta_angle for i in range(2 * self.action_space_dim + 1)],
-            device=self.device,
-        )
-        return angle_values
-
-    def get_discrete_action(self, current_angle: torch.Tensor, idx: int):
-        """
-        Updates the current angle based on the selected discrete action.
-
-        Args:
-            current_angle (torch.Tensor): The current angle of the drone.
-            idx (int): The action index (INCREASING, DECREASING, or NOTHING).
-
-        Returns:
-            int: The index of the closest discrete action in `angles_set`.
-        """
-        if idx == INCREASING:
-            current_angle += self.delta_angle
-        elif idx == DECREASING:
-            current_angle -= self.delta_angle
-        elif idx == NOTHING:
-            current_angle = current_angle
-
-        current_angle = torch.clamp(current_angle, -self.parameters.angle_max, self.parameters.angle_max)
-
-        return torch.abs(self.angles_set - current_angle).argmin().item()
+@dataclass
+class ContinuousState:
+    relative_position: torch.Tensor
+    relative_velocity: torch.Tensor
+    relative_acceleration: torch.Tensor
+    pitch_angle: float
 
 
 @dataclass
@@ -76,15 +23,7 @@ class DiscreteState:
     position: int
     velocity: int
     acceleration: int
-    action_index: int
-
-
-@dataclass
-class ContinuousState:
-    position: torch.Tensor
-    velocity: torch.Tensor
-    acceleration: torch.Tensor
-    pitch_angle: float
+    pitch: int
 
 
 class StateSpace:
@@ -141,6 +80,49 @@ class StateSpace:
         self.r_success = self.parameters.r_success
         self.r_failure = self.parameters.r_failure
         self.discretized_goal_state = torch.tensor([1, 1], device=self.device)
+
+    def sample(self):
+        """
+        Samples a random action from the action space using a random choice.
+
+        Returns:
+            int: The index of the sampled action.
+        """
+
+        ## Randomly select an action between [0, 1, 2]. 0: NOTHING, 1: DECREASING, 2: INCREASING
+        action = torch.randint(0, 3, (1,)).item()
+
+        return action
+
+    def _get_discrete_angle(self, current_angle: float, idx: int):
+        """
+        Updates the current angle based on the selected discrete action idx.
+
+        Args:
+            current_angle (float): The current angle of the drone.
+            idx (int): The action index (INCREASING, DECREASING, or NOTHING).
+
+        Returns:
+            tuple: (new_angle_idx (int), new_angle (float))
+
+            new_angle_idx (int): The index of the closest discrete action in `angle_values`,
+            which represents the set of 7 possible pitch positions the drone can assume.
+
+            new_angle (float): The updated pitch angle of the drone as a float.
+
+        """
+
+        if idx == INCREASING:
+            current_angle += self.parameters.delta_angle
+        elif idx == DECREASING:
+            current_angle -= self.parameters.delta_angle
+        elif idx == NOTHING:
+            current_angle = current_angle
+
+        new_angle = torch.clamp(current_angle, -self.parameters.angle_max, self.parameters.angle_max)
+        new_angle_idx = torch.abs(self.parameters.angle_values - new_angle).argmin().item()
+
+        return new_angle_idx, new_angle
 
     def _set_last_state(self, last_state: ContinuousState):
         """
@@ -200,7 +182,7 @@ class StateSpace:
 
         return state
 
-    def get_discretized_state(self, state: ContinuousState, discrete_action: Optional[int] = None):
+    def get_discretized_state(self, state: ContinuousState):
         """
         Converts a continuous state into a discretized state representation.
 
@@ -212,23 +194,22 @@ class StateSpace:
             DiscreteState: The discretized state.
         """
 
-        relative_pos = state.position
-        relative_vel = state.velocity
-        relative_acc = state.acceleration
-        theta_index = None
+        relative_pos = state.relative_position
+        relative_vel = state.relative_velocity
+        relative_acc = state.relative_acceleration
+        pitch = state.pitch_angle
 
         normalized_position = self.parameters._normalized_state(relative_pos, self.p_max)
         normalized_velocity = self.parameters._normalized_state(relative_vel, self.v_max)
+
         if relative_acc is not None:
             normalized_acc = self.parameters._normalized_state(relative_acc, self.a_max)
-        # TODO: Else, if it's `None`, what happens ?
-        if discrete_action is not None:
-            theta_index = discrete_action
+
         return DiscreteState(
             position=self.d_f(normalized_position, self.goal_pos, self.p_lim),
             velocity=self.d_f(normalized_velocity, self.goal_vel, self.v_lim),
             acceleration=self.d_f(normalized_acc, self.goal_acc, self.a_lim),
-            action_index=theta_index,
+            pitch=torch.abs(self.parameters.angle_values - pitch).argmin().item(),
         )
 
     def get_max_reward(self):
@@ -259,11 +240,10 @@ class StateSpace:
         Returns:
             float: The computed reward.
         """
-        current_relative_pos = current_continuous_state.position
-        current_relative_vel = current_continuous_state.velocity
-        # Ignores are needed because we cannot guarantee this is not None, check if it may cause a problem.
-        last_relative_pos = self.last_state.position  # type: ignore
-        last_relative_vel = self.last_state.velocity  # type:ignore
+        current_relative_pos = current_continuous_state.relative_position
+        current_relative_vel = current_continuous_state.relative_velocity
+        last_relative_pos = self.last_state.relative_position  # type: ignore
+        last_relative_vel = self.last_state.relative_velocity  # type:ignore
 
         current_relative_pos = self.parameters._normalized_state(current_relative_pos, self.parameters.p_max)
         last_relative_pos = self.parameters._normalized_state(last_relative_pos, self.parameters.p_max)
@@ -299,32 +279,3 @@ class StateSpace:
         r_dur = self.parameters.w_dur * self.v_lim * self.delta_t
 
         return (r_p + r_v + r_theta + r_dur + r_term).item()
-
-
-# if __name__ == "__main__":
-#     # Creiamo un esempio di spazio di stato
-#     state_space = StateSpace(
-#         p_max=torch.tensor(0.8),
-#         v_max=torch.tensor(0.5),
-#         a_max=torch.tensor(0.5),
-#         goal_pos=torch.randint(0, 10, (3,)).float(),
-#         lim_pos=torch.randint(0, 10, (3,)).float(),
-#         goal_vel=torch.randint(0, 10, (3,)).float(),
-#         lim_vel=torch.randint(0, 10, (3,)).float(),
-#         goal_acc=torch.randint(0, 10, (3,)).float(),
-#         lim_acc=torch.randint(0, 10, (3,)).float(),
-#         device="cpu",
-#     )
-
-#     # Stato attuale del drone
-#     while True:
-#         relative_pos = (torch.randn(3),)
-#         relative_vel = (torch.randn(3),)
-#         relative_acc = (torch.randn(3),)
-#         theta_index = 2  # Supponiamo un indice qualsiasi dell'angolo
-
-#         # Otteniamo lo stato discretizzato
-#         discrete_state = state_space.get_discretized_state(relative_pos, relative_vel, relative_acc, theta_index)
-#         if discrete_state.position != 1 or discrete_state.velocity != 1 or discrete_state.acceleration != 1:
-#             print("Stato Discretizzato:", discrete_state)
-#         # print("Stato Discretizzato:", discrete_state)

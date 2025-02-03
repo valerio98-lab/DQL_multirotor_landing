@@ -4,7 +4,6 @@ from dql_multirotor_landing.parameters import Parameters
 from dql_multirotor_landing.environment.mdp import (
     StateSpace,
     DiscreteState,
-    ActionSpace,
     ContinuousState,
     INCREASING,
     DECREASING,
@@ -24,12 +23,6 @@ def state_space():
     return StateSpace(goal_pos=0.5, p_lim=3, goal_vel=0.2, v_lim=2, goal_acc=0.0, a_lim=1)
 
 
-@pytest.fixture
-def action_space():
-    """Fixture for initializing the ActionSpace instance."""
-    return ActionSpace()
-
-
 # ------------------------
 # TESTING PARAMETERS CLASS
 # ------------------------
@@ -47,25 +40,30 @@ def action_space():
 # ------------------------
 # TESTING ACTION SPACE
 # ------------------------
-def test_discretized_action_space(action_space):
+def test_discretized_action_space(state_space):
     """Test whether action space is correctly discretized."""
-    assert len(action_space.angles_set) > 0, "Angles set should not be empty"
+    assert len(state_space.parameters.angle_values) > 0, "Angles set should not be empty"
     assert torch.all(
-        action_space.angles_set <= action_space.parameters.angle_max
+        state_space.parameters.angle_values <= state_space.parameters.angle_max
     ), "Angles should not exceed angle_max"
 
 
-def test_get_discrete_action(action_space):
+def test_get_discrete_action(state_space):
     """Test whether discrete action selection works correctly."""
     current_angle = torch.tensor(0.0)
 
-    action_increase = action_space.get_discrete_action(current_angle, INCREASING)
-    action_decrease = action_space.get_discrete_action(current_angle, DECREASING)
-    action_nothing = action_space.get_discrete_action(current_angle, NOTHING)
+    angle_increase_idx, angle_i = state_space._get_discrete_angle(current_angle, INCREASING)
+    angle_decrease_idx, angle_d = state_space._get_discrete_angle(current_angle, DECREASING)
+    angle_nothing_idx, angle_n = state_space._get_discrete_angle(current_angle, NOTHING)
 
-    assert action_increase >= 0, "INCREASING should return a valid action index"
-    assert action_decrease >= 0, "DECREASING should return a valid action index"
-    assert action_nothing >= 0, "NOTHING should return a valid action index"
+    assert angle_increase_idx >= 0, "INCREASING should return a valid action index"
+    assert angle_increase_idx < 7, "INCREASING should return a valid action index (upper bound)"
+    assert angle_decrease_idx >= 0, "DECREASING should return a valid action index"
+    assert angle_decrease_idx < 7, "DECREASING should return a valid action index (upper bound)"
+    assert angle_nothing_idx >= 0, "NOTHING should return a valid action index"
+    assert angle_nothing_idx < 7, "NOTHING should return a valid action index (upper bound)"
+
+    print(angle_i, angle_d, angle_n)
 
 
 # ------------------------
@@ -82,10 +80,10 @@ def test_d_f(state_space):
 def test_get_discretized_state(state_space):
     """Test whether the get_discretized_state function correctly maps continuous states to discrete ones."""
     obs = ContinuousState(
-        position=torch.tensor([0.3, 0.2, 0.1]),
-        velocity=torch.tensor([0.2, 0.5, 2]),
-        acceleration=torch.tensor([0.1, 1, 2]),
-        pitch_angle=None,
+        relative_position=torch.tensor([0.3, 0.2, 0.1]),
+        relative_velocity=torch.tensor([0.2, 0.5, 2]),
+        relative_acceleration=torch.tensor([0.1, 1, 2]),
+        pitch_angle=15,
     )
 
     discrete_state = state_space.get_discretized_state(state=obs)
@@ -104,16 +102,16 @@ def test_get_reward(state_space):
     last_relative_vel = torch.tensor([0.4, 0.3, 0.2])
 
     current_obs = ContinuousState(
-        position=current_relative_pos,
-        velocity=current_relative_vel,
-        acceleration=torch.tensor([0.1, 1, 2]),
+        relative_position=current_relative_pos,
+        relative_velocity=current_relative_vel,
+        relative_acceleration=torch.tensor([0.1, 1, 2]),
         pitch_angle=20,
     )
 
     last_obs = ContinuousState(
-        position=last_relative_pos,
-        velocity=last_relative_vel,
-        acceleration=torch.tensor([0.1, 1, 2]),
+        relative_position=last_relative_pos,
+        relative_velocity=last_relative_vel,
+        relative_acceleration=torch.tensor([0.1, 1, 2]),
         pitch_angle=15.7,
     )
 
