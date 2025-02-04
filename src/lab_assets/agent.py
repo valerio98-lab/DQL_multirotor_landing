@@ -5,7 +5,6 @@
 
 """Configuration for the quadcopters"""
 
-
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.actuators import ImplicitActuatorCfg
 from omni.isaac.lab.assets import ArticulationCfg
@@ -30,7 +29,7 @@ CRAZYFLIE_CFG = ArticulationCfg(
         copy_from_source=False,
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(2.0, 1.0, 3.0),
+        pos=(0.5, 0.5, 3.0),
         joint_pos={
             ".*": 0.0,
         },

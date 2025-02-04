@@ -17,6 +17,9 @@ class ContinuousState:
     relative_acceleration: torch.Tensor
     pitch_angle: float
 
+    def __repr__(self) -> str:
+        return f"{self.relative_position}, {self.relative_velocity}, {self.relative_acceleration}, {self.pitch_angle}"
+
 
 @dataclass
 class DiscreteState:

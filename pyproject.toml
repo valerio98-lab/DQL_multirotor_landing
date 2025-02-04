@@ -31,7 +31,11 @@ module = ["omni.*"]
 ignore_missing_imports = true
 
 [dependency-groups]
-dev = ["ruff>=0.9.3"]
+dev = [
+    "loguru>=0.7.3",
+    "pytest>=8.3.4",
+    "ruff>=0.9.3",
+]
 
 [tool.ruff]
 ignore = ["E402"]

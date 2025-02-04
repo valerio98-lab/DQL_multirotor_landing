@@ -2,6 +2,8 @@ import argparse
 
 from omni.isaac.lab.app import AppLauncher
 
+from dql_multirotor_landing.utils import Actions
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Tutorial on running the cartpole RL environment.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to spawn.")
@@ -26,31 +28,6 @@ from omni.isaac.lab_tasks.utils import parse_env_cfg
 
 from dql_multirotor_landing.environment.moving_platform import MovingPlatform
 from dql_multirotor_landing.pid import PIDController
-
-
-@dataclass
-class Actions:
-    thrust: float
-    roll: float
-    pitch: float
-    yaw: float
-    left_wheel: float
-    right_wheel: float
-
-    def to_tensor(self, device):
-        return torch.tensor(
-            [
-                [
-                    self.thrust,
-                    self.roll,
-                    self.pitch,
-                    self.yaw,
-                    self.left_wheel,
-                    self.right_wheel,
-                ]
-            ],
-            device=device,
-        )
 
 
 def main():
