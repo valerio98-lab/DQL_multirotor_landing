@@ -1,10 +1,8 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import astuple, dataclass
+from typing import Optional, TypeAlias
 
 import numpy as np
-import torch
 from gymnasium import Env
-from torch import nn
 
 from dql_multirotor_landing.environment import mdp
 
@@ -64,6 +62,50 @@ class Goals:
         self.a = self.beta_a
 
 
+class QTableIdx:
+    position_idx: int
+    velocity_idx: int
+    acceleration_idx: int
+    pitch_idx: int
+    action_idx: Optional[int] = None
+
+    def __init__(self, discrete_state: mdp.DiscreteState) -> None:
+        self.position_idx = discrete_state.position
+        self.velocity_idx = discrete_state.velocity
+        self.acceleration_idx = discrete_state.acceleration
+        self.pitch_idx = discrete_state.pitch
+
+
+StateCountPairIdx: TypeAlias = QTableIdx
+
+
+class QTable:
+    data: np.ndarray
+
+    def __init__(self, num_positions, num_velocities, num_accelerations, num_pitches, num_actions) -> None:
+        self.data = np.zeros((num_positions, num_velocities, num_accelerations, num_pitches, num_actions))
+
+    def transfer_learning(self, current_r_max: float, previous_r_max: float) -> None:
+        self.data = (current_r_max / previous_r_max) * self.data
+
+    def __setitem__(self, index: QTableIdx, key):
+        if index.action_idx is not None:
+            self.data[index.position_idx, index.velocity_idx, index.acceleration_idx, index.pitch_idx] = key
+        else:
+            self.data[
+                index.position_idx, index.velocity_idx, index.acceleration_idx, index.pitch_idx, index.action_idx
+            ] = key
+
+    def __getitem__(self, index: QTableIdx):
+        result = self.data[index.position_idx, index.velocity_idx, index.acceleration_idx, index.pitch_idx]
+        if index.action_idx is not None:
+            result = result[index.action_idx]
+        return result
+
+
+StateCountPair: TypeAlias = QTable
+
+
 class CurriculumLearner:
     def __init__(
         self,
@@ -73,17 +115,21 @@ class CurriculumLearner:
         total_curiculum_steps: int,
         num_states: int,
         num_actions: int,
+        num_positions: int,
+        num_velocities: int,
+        num_pitches: int,
+        num_accelerations: int,
         sigma: float,
         initial_exploration_rate: float,
         gamma: float,
-        t_0,
-        p_max,
-        v_max,
-        a_mpmax,
-        beta_p,
-        beta_v,
-        beta_a,
-        sigma_a,
+        t_0: float,
+        p_max: float,
+        v_max: float,
+        a_mpmax: float,
+        beta_p: float,
+        beta_v: float,
+        beta_a: float,
+        sigma_a: float,
         total_episodes: int,
         total_steps: int,
     ) -> None:
@@ -101,15 +147,32 @@ class CurriculumLearner:
         self.total_curiculum_steps = total_curiculum_steps
         """Total number of curriculum steps"""
 
-        self.num_states = num_states
-        """Number of states"""
+        # self.num_states = num_states
+        # """Number of possstates"""
 
         self.num_actions = num_actions
-        """Numbe of actions"""
+        """Numbe of possible discrete actions"""
+
+        self.num_positions = num_positions
+        """Number of possible discrete positions"""
+
+        self.num_velocities = num_velocities
+        """Number of possible discrete velocities"""
+
+        self.num_accelerations = num_accelerations
+        """Number of possible discrete accelerations"""
+
+        self.num_pitches = num_pitches
+        """Number of possible discrete pitch angles"""
 
         # Double Q learning assumes we use two different Q tables
-        self.Q_table1 = np.zeros((num_states, num_actions))
-        self.Q_table2 = np.zeros((num_states, num_actions))
+        self.Q_table1 = np.zeros((num_positions, num_velocities, num_accelerations, num_pitches, num_actions))
+        self.Q_table2 = np.zeros((num_positions, num_velocities, num_accelerations, num_pitches, num_actions))
+
+        self.state_action_pair_count = np.zeros(
+            (num_positions, num_velocities, num_accelerations, num_pitches, num_actions)
+        )
+        """Count of how many times a state action pair has been visited"""
 
         self.limits = Limits(0, 0, 1, sigma, t_0, p_max, v_max, a_mpmax)
         """Limits define, at each curriculum step, the maximum allowable normalized actions.  Initially they are very coarse and get refined as the curriculum sequence advances."""
@@ -122,24 +185,26 @@ class CurriculumLearner:
 
         self.total_steps = total_steps
         """Total number of episodes for each episode"""
-
-        # TODO: Check if this is correct
-        self.action_space = mdp.ActionSpace(num_actions)
-        """The possible angle adjustements the agent perform"""
+        # self.action_space = mdp.ActionSpace(num_actions)
+        # """The possible angle adjustements the agent perform"""
 
         self.initial_exploration_rate = initial_exploration_rate
         """Initial value of the exploration rate. This should decay as ..."""
         # TODO: It should not be this
         self.exploration_rate = initial_exploration_rate
 
-    def learning_rate(self, state_idx: int, action_index: int, state_action_pair_count: np.ndarray) -> float:
-        """Returns the curent leaning rate using Eq. 30"""
-        return max([((state_action_pair_count[state_idx, action_index] + 1) ** (-self.omega)), self.alpha_min])
+    def learning_rate(self, index: StateCountPairIdx) -> float:
+        """Returns the curent learning rate using Eq. 30"""
+        n_c = self.state_action_pair_count[
+            index.position_idx, index.velocity_idx, index.acceleration_idx, index.pitch_idx, index.action_idx
+        ]
+        return max([((n_c + 1) ** (-self.omega)), self.alpha_min])  # type:ignore
 
     def decay_exploration_rate(
         self,
     ):
-        # TODO: Lots of cofunsion really, don't know where to start, but this should decay.
+        self.exploration_rate *= 0.995
+        self.exploration_rate = max(self.exploration_rate, 0.01)
         return self.initial_exploration_rate
 
     def multi_resolution_train(self):
@@ -176,91 +241,116 @@ class CurriculumLearner:
         self,
         decision_policy: np.ndarray,
         behaviour_policy: np.ndarray,
-        current_state_idx: int,
-        current_action_idx: int,
-        state_action_pair_count: np.ndarray,
+        current_idx: QTableIdx,
+        next_idx: QTableIdx,
         reward: float,
-        next_state_idx: int,
     ):
-        best_action = np.argmax(decision_policy[current_state_idx])
-        # TODO: Not going to repeat, but still the same issue.
-        best_action_idx = 0
-        decision_policy[current_state_idx, current_action_idx] += self.learning_rate(
-            current_state_idx, current_action_idx, state_action_pair_count
-        ) * (
+        best_action = np.argmax(
+            decision_policy[
+                current_idx.position_idx, current_idx.velocity_idx, current_idx.acceleration_idx, current_idx.pitch_idx
+            ]
+        )
+
+        decision_policy[
+            current_idx.position_idx,
+            current_idx.velocity_idx,
+            current_idx.acceleration_idx,
+            current_idx.pitch_idx,
+            current_idx.action_idx,
+        ] += self.learning_rate(current_idx) * (
             reward
-            + self.gamma * behaviour_policy[next_state_idx, best_action_idx]
-            - decision_policy[current_state_idx, current_action_idx]
+            + self.gamma
+            * behaviour_policy[
+                next_idx.position_idx,
+                next_idx.velocity_idx,
+                next_idx.acceleration_idx,
+                next_idx.pitch_idx,
+                best_action,
+            ]
+            - decision_policy[
+                current_idx.position_idx,
+                current_idx.velocity_idx,
+                current_idx.acceleration_idx,
+                current_idx.pitch_idx,
+                current_idx.action_idx,
+            ]
         )
 
     def double_q_learning(self, state_space: mdp.StateSpace):
         for _episode in range(1, self.total_episodes):
-            # TODO: Is it episode wise or curriculum step wise ?
-            state_action_pair_count = np.zeros((self.num_states, self.num_actions))
             observation, _info = self.env.reset()
-            # TODO: Is this correct in general ? If so we can change the `position`,
-            # `velocity` ...ecc names in favor of `relative_position`, `relative_velocity`.
-            # Else we might get confused
             current_continuous_state = mdp.ContinuousState(
                 observation["relative_position"],
                 observation["relative_velocity"],
                 observation["relative_acceleration"],
-                # TODO: Make sure that this does indeed make sense.
-                observation["relative_orientation"],
+                observation["relative_orientation"][2],
             )
             # Discretize the current state
-            current_discrete_state = state_space.get_discretized_state(current_continuous_state, None)
+            current_discrete_state = state_space.get_discretized_state(current_continuous_state)
             for _episode in range(1, self.total_steps):
-                # TODO: Understand how, or even if it's necessary, let's keep them as a remainder.
-                current_state_idx = 0
+                current_idx = QTableIdx(current_discrete_state)  # type:ignore
                 # Explore
                 if np.random.rand() < self.exploration_rate:
-                    action = np.random.choice(self.num_actions)
+                    action = state_space.sample()
                 # Commit
                 else:
-                    # TODO: This is the first reason why we need a mapping
                     # Get the action based on both Q table1 and Q table2
-                    action = np.argmax((self.Q_table1[current_state_idx] / self.Q_table2[current_state_idx]) / 2)
-                # TODO: Understand how
-                current_action_idx = 0
+                    action = np.argmax(
+                        (
+                            self.Q_table1[
+                                current_idx.position_idx,
+                                current_idx.velocity_idx,
+                                current_idx.acceleration_idx,
+                                current_idx.pitch_idx,
+                            ]
+                            + self.Q_table2[
+                                current_idx.position_idx,
+                                current_idx.velocity_idx,
+                                current_idx.acceleration_idx,
+                                current_idx.pitch_idx,
+                            ]
+                        )
+                        / 2
+                    )
+
+                current_idx.action_idx = int(action)
+                # Update the state action pair count
+                self.state_action_pair_count[
+                    current_idx.position_idx,
+                    current_idx.velocity_idx,
+                    current_idx.acceleration_idx,
+                    current_idx.pitch_idx,
+                    current_idx.action_idx,
+                ] += 1
                 observation, _reward, terminated, truncated, _info = self.env.step(action)
                 new_continuous_state = mdp.ContinuousState(
                     observation["relative_position"],
                     observation["relative_velocity"],
                     observation["relative_acceleration"],
-                    # TODO: Make sure that this does indeed make sense.
-                    observation["relative_orientation"],
+                    observation["relative_orientation"][2],
                 )
-                # TODO: Is this correct ? I feel like it is, but I get confused with naming
                 reward = state_space.get_reward(new_continuous_state)
-                new_discrete_state = state_space.get_discretized_state(new_continuous_state, None)
-                # TODO: Understand how
-                next_state_idx = 0
-                # Update the state action pair count
-                # TODO: Should we use the current_state_idx or the next ?
-                state_action_pair_count[current_state_idx, current_action_idx] += 1
+                new_discrete_state = state_space.get_discretized_state(new_continuous_state)
+
+                next_idx = QTableIdx(new_discrete_state)
 
                 # Update either Q table1 or Q table2
                 if np.random.rand() < 0.5:
                     self.update_q_table(
                         self.Q_table1,
                         self.Q_table2,
-                        current_state_idx,
-                        current_action_idx,
-                        state_action_pair_count,
+                        current_idx,
+                        next_idx,
                         reward,
-                        next_state_idx,
                     )
 
                 else:
                     self.update_q_table(
                         self.Q_table2,
                         self.Q_table1,
-                        current_state_idx,
-                        current_action_idx,
-                        state_action_pair_count,
+                        current_idx,
+                        next_idx,
                         reward,
-                        next_state_idx,
                     )
                 current_discrete_state = new_discrete_state
                 if terminated or truncated:
