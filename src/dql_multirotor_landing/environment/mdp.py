@@ -3,6 +3,7 @@ from typing import Optional
 
 import torch
 
+from dql_multirotor_landing import logger
 from dql_multirotor_landing.parameters import Parameters
 
 INCREASING = 2
@@ -160,27 +161,29 @@ class StateSpace:
         """
 
         discretized_state_x = continuos_state[0]
+        # logger.debug(
+        #     f"Mi trovo dentro d_f, {discretized_state_x=}, {x1=},{x2=}, {self.p_lim=}, {self.v_lim=}, {self.a_lim=}"
+        # )
+        # if x2 < x1:
+        #     raise ValueError(f"max_value {x2} should be greater than or equal to min_value {x1}")
 
-        if x2 < x1:
-            raise ValueError(f"max_value {x2} should be greater than or equal to min_value {x1}")
+        # if discretized_state_x > x2:
+        #     raise ValueError(
+        #         f"The x_dimension of the state {discretized_state_x} should be less than or equal to max_value {x2}"
+        #     )
 
-        if discretized_state_x > x2:
-            raise ValueError(
-                f"The x_dimension of the state {discretized_state_x} should be less than or equal to max_value {x2}"
-            )
+        # if discretized_state_x < x1:
+        #     raise ValueError(
+        #         f"The x_dimension of the state {discretized_state_x} should be greater than or equal to min_value {x1}"
+        #     )
 
-        if discretized_state_x < x1:
-            raise ValueError(
-                f"The x_dimension of the state {discretized_state_x} should be greater than or equal to min_value {x1}"
-            )
-
-        if discretized_state_x >= -x2 and discretized_state_x < -x1:
+        if discretized_state_x < -x1:
             state = 0  ##Far distance wrt the goal state
 
         if discretized_state_x >= -x1 and discretized_state_x <= x1:
             state = 1  ##Close distance wrt the goal state
 
-        if discretized_state_x > x1 and discretized_state_x <= x2:
+        if discretized_state_x > x1:
             state = 2  ##Middle distance wrt the goal state
 
         return state
@@ -202,17 +205,19 @@ class StateSpace:
         relative_acc = state.relative_acceleration
         pitch = state.pitch_angle
 
-        normalized_position = self.parameters._normalized_state(relative_pos, self.p_max)
-        normalized_velocity = self.parameters._normalized_state(relative_vel, self.v_max)
+        # logger.debug(f"{relative_pos=}, {relative_vel=}, {relative_acc=}, {pitch=}")
 
-        if relative_acc is not None:
-            normalized_acc = self.parameters._normalized_state(relative_acc, self.a_max)
+        normalized_pos = self.parameters._normalized_state(relative_pos, self.p_max)
+        normalized_vel = self.parameters._normalized_state(relative_vel, self.v_max)
+        normalized_acc = self.parameters._normalized_state(relative_acc, self.a_max)
 
+        # logger.debug(f"{normalized_pos=}, {normalized_vel=}, {normalized_acc=}")
+        # exit()
         return DiscreteState(
-            position=self.d_f(normalized_position, self.goal_pos, self.p_lim),
-            velocity=self.d_f(normalized_velocity, self.goal_vel, self.v_lim),
+            position=self.d_f(normalized_pos, self.goal_pos, self.p_lim),
+            velocity=self.d_f(normalized_vel, self.goal_vel, self.v_lim),
             acceleration=self.d_f(normalized_acc, self.goal_acc, self.a_lim),
-            pitch=torch.abs(self.parameters.angle_values - pitch).argmin().item(),
+            pitch=int(torch.abs(self.parameters.angle_values - pitch).argmin().item()),
         )
 
     def get_max_reward(self):

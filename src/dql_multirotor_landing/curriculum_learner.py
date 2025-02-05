@@ -141,14 +141,6 @@ class Table(ABC):
     def __repr__(self) -> str:
         return self.data.__repr__()
 
-    #     return (
-    #         f"Positions: {self.data[0, :]}\n"
-    #         + f"Velocities: {self.data[0, :]}\n"
-    #         + f"Accelerations: {self.data[0, :]}\n"
-    #         + f"Pitches: {self.data[0, :]}\n"
-    #         + f"Actions: {self.data[0, :]}\n"
-    #     )
-
 
 class QTable(Table):
     def __init__(
@@ -172,19 +164,12 @@ class StateCountPairTable(Table):
 
 
 @dataclass
-class Betas:
-    beta_p: np.ndarray
-    beta_v: np.ndarray
-    beta_a: np.ndarray
-
-    def update(self, curriculum_step: int): ...
-
-
-@dataclass
 class CurriculumLearnerParameters:
     omega: float = 0.51
     alpha_min: float = 0.02949
     total_curiculum_steps: int = 10
+    total_episodes: int = 10
+    max_timesteps_per_episode: int = 1000
     num_positions: int = 3
     num_velocities: int = 3
     num_accelerations: int = 3
@@ -197,12 +182,10 @@ class CurriculumLearnerParameters:
     p_max: float = 4.5
     v_max: float = 3.39
     a_mpmax: float = 1.28
-    beta_p: float = 0.01
-    beta_v: float = 0.1
-    beta_a: float = 1
+    beta_p: float = 1 / 3
+    beta_v: float = 1 / 3
+    beta_a: float = 1 / 3
     sigma_a: float = 0.416
-    total_episodes: int = 10
-    max_timesteps_per_episode: int = 100
 
 
 # endregion
@@ -423,7 +406,7 @@ class CurriculumLearner:
                         observation["relative_acceleration"][0, 2],
                     ]
                 )
-                platform_v = self.moving_platform.compute_wheel_velocity(0.02)[1]
+                platform_v = self.moving_platform.compute_wheel_velocity(0.02)[1]  # noqa: F841
                 # Do nothing
                 pitch = observation["relative_orientation"][0, 0]
                 # Decrease

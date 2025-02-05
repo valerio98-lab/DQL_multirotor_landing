@@ -1,5 +1,7 @@
 import torch
 
+from dql_multirotor_landing import logger
+
 
 class Parameters:
     _instance = None
@@ -11,9 +13,9 @@ class Parameters:
 
     def __init__(self, device="cpu"):
         self.device = device
-        self.p_max = 0
-        self.v_max = 0
-        self.a_max = 0
+        self.p_max = 4.5
+        self.v_max = 3.39
+        self.a_max = 1.28
         self.w_p = -100
         self.w_v = -10
         self.w_theta = -1.55
