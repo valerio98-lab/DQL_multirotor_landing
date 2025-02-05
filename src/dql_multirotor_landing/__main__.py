@@ -93,17 +93,18 @@ def main():
             height = observation["relative_position"][0, 2]
             yaw = observation["agent_angular_velocity"]
             print(yaw)
-            if iteration % 300 == 0:
+            if iteration == 300:
                 thrust, yaw_i = pid_controller.output([abs(height), yaw])
-                yaw_i = 0.005
+                yaw_i = -0.005
             else:
                 thrust, yaw_i = pid_controller.output([abs(height), yaw])
                 yaw_i = yaw_i.item()
+                thrust = thrust.item()
 
             _, v_mp, _, w_mp = target_controller.compute_wheel_velocity(dt=0.02)
             actions = Actions(
                 # ths[iteration],
-                thrust.item(),
+                thrust,
                 0.0,
                 0.0,
                 yaw_i,
@@ -118,7 +119,7 @@ def main():
             if _terminated:
                 pid_controller.reset()
 
-            print(f"height: {height}, thrust: {thrust.item()}, yaw: {yaw_i}, w_mp: {w_mp}")
+            print(f"height: {height}, thrust: {thrust}, yaw: {yaw_i}, w_mp: {w_mp}")
     # close the simulator
     env.close()
 

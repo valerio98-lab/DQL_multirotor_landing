@@ -195,7 +195,7 @@ class QuadrotorEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone()
         self._thrust[:, 0, 2] = self._actions[:, 0] * self._agent_weight  # * (self._actions[:, 0] + 1.0) / 2.0
-        self._moment[:, 0, :] = self._actions[:, 1:4]
+        self._moment[:, 0, :] = self._actions[:, 1:4] * self.cfg.moment_scale
         self._target_action = self._actions[:, 4:6]  # * self._target_masses.sum()
 
     def _apply_action(self):

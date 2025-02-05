@@ -9,9 +9,9 @@ class PIDController:
 
     def __init__(
         self,
-        kp: Any = [4, 0.5],
-        ki: Any = [1, 0],
-        kd: Any = [1, 0],
+        kp: Any = [4, 8],
+        ki: Any = [1, 1],
+        kd: Any = [1, 4],
         set_point: Any = [0, 0],
         device="cpu",
         *,
@@ -57,7 +57,7 @@ class PIDController:
         self.last_error = error
         self.last_y = y_measured
         result = self.p_term + I_out + D_out
-        limits = torch.tensor([[0, 2], [-0.5, 0.5]])
+        limits = torch.tensor([[0, 2], [-1, 1]])
         result = torch.clamp(result, min=limits[:, 0], max=limits[:, 1])
         return result
 
