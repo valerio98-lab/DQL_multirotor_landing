@@ -29,7 +29,7 @@ from lab_assets.agent import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
 from lab_assets.target import IW_HUB_CFG  # isort: skip
 
-XMAX, YMAX, ZMAX = 100.0, 100.0, 100.0
+XMAX, YMAX, ZMAX = 9.0, 9.0, 9.0
 
 
 class QuadrotorEnvWindow(BaseEnvWindow):
@@ -126,6 +126,7 @@ class Observations:
     relative_acceleration: torch.Tensor
     relative_orientation: torch.Tensor
     target_position: torch.Tensor
+    agent_angular_velocity: torch.Tensor
 
     def __repr__(self) -> str:
         return str(self.__dict__)
@@ -143,8 +144,7 @@ class QuadrotorEnv(DirectRLEnv):
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
 
         ## Fly zone
-        self._fly_zone = torch.tensor([XMAX, YMAX, ZMAX], device=self.device)
-
+        self._fly_zone = torch.tensor([[-XMAX, XMAX], [-YMAX, YMAX], [0.5, ZMAX]], device=self.device)
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
@@ -195,8 +195,8 @@ class QuadrotorEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone()
         self._thrust[:, 0, 2] = self._actions[:, 0] * self._agent_weight  # * (self._actions[:, 0] + 1.0) / 2.0
-        self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:4]
-        self._target_action = self._actions[:, 4:6] * self._target_masses.sum()
+        self._moment[:, 0, :] = self._actions[:, 1:4]
+        self._target_action = self._actions[:, 4:6]  # * self._target_masses.sum()
 
     def _apply_action(self):
         self._agent.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
@@ -240,6 +240,7 @@ class QuadrotorEnv(DirectRLEnv):
             relative_acceleration=self.relative_acc_s.round(decimals=3),
             relative_orientation=self.relative_orientation_s.round(decimals=3),
             target_position=target_position.round(decimals=3),
+            agent_angular_velocity=self._agent.data.root_state_w[:, 12:13].round(decimals=3),
         )
         # observation = {
         #     "observation": observation,
@@ -269,7 +270,7 @@ class QuadrotorEnv(DirectRLEnv):
         # print(self._agent.data.root_pos_w[:, 2])
         agent_position = self._agent.data.root_pos_w[:, :3]
         died = torch.any(
-            torch.logical_or(agent_position > self._fly_zone, agent_position < -self._fly_zone)
+            torch.logical_or(agent_position < self._fly_zone[:, 0], agent_position > self._fly_zone[:, 1])
         )  ##terminazione
         return died, time_out
 

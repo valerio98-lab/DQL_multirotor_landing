@@ -78,7 +78,6 @@ def main():
 
     # simulate environment
     iteration = 0
-    it = 0
     last_setpoint = 5
     while simulation_app.is_running():
         # run everything in inference mode
@@ -86,45 +85,40 @@ def main():
             # sample actions from -1 to 1
             # apply actions
             iteration += 1
-            it += 1
-            if iteration % 50 == 0:
-                if last_setpoint > 1:
-                    last_setpoint = last_setpoint - 0.1
-                    pid_controller.set_setpoint([last_setpoint, 0])
-                    iteration = 0
-
-            if it % 201 == 0:
-                r = 0.005
-            elif it % 202 == 0:
-                r = -0.008
-                it = 0
-            else:
-                r = 0.0
-
+            # if iteration % 50 == 0:
+            #     if last_setpoint > 1:
+            #         last_setpoint = last_setpoint - 0.1
+            #         pid_controller.set_setpoint([last_setpoint, 0])
+            #         iteration = 0
             height = observation["relative_position"][0, 2]
-            yaw = observation["relative_acceleration"][0, 2]
-            thrust, yaw = pid_controller.output([abs(height), yaw])
+            yaw = observation["agent_angular_velocity"]
+            print(yaw)
+            if iteration % 300 == 0:
+                thrust, yaw_i = pid_controller.output([abs(height), yaw])
+                yaw_i = 0.005
+            else:
+                thrust, yaw_i = pid_controller.output([abs(height), yaw])
+                yaw_i = yaw_i.item()
+
             _, v_mp, _, w_mp = target_controller.compute_wheel_velocity(dt=0.02)
-            print(thrust)
             actions = Actions(
                 # ths[iteration],
                 thrust.item(),
-                r,
                 0.0,
                 0.0,
-                v_mp,
-                v_mp,
+                yaw_i,
+                w_mp,
+                w_mp,
             ).to_tensor(
                 device=env.unwrapped.device
             )  # type: ignore
 
             observation, _reward, _terminated, _truncated, _info = env.step(actions)
-            print("Height: ", height)
 
             if _terminated:
                 pid_controller.reset()
 
-            print(f"height: {height}, thrust: {thrust.item()}")
+            print(f"height: {height}, thrust: {thrust.item()}, yaw: {yaw_i}, w_mp: {w_mp}")
     # close the simulator
     env.close()
 

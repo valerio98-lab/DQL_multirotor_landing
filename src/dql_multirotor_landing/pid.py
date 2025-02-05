@@ -9,9 +9,9 @@ class PIDController:
 
     def __init__(
         self,
-        kp: Any = [8, 8],
-        ki: Any = [5, 5],
-        kd: Any = [3, 10],
+        kp: Any = [4, 0.5],
+        ki: Any = [1, 0],
+        kd: Any = [1, 0],
         set_point: Any = [0, 0],
         device="cpu",
         *,
@@ -40,8 +40,14 @@ class PIDController:
 
         # Get the PID values
         self.p_term = self.kp * error
-        self.d_term = self.kd * (self.last_y - y_measured) / self.sample_time
-        self.i_term += self.ki * error * self.sample_time
+
+        # Compute the integral term
+        self.i_term += error * self.sample_time
+        I_out = self.ki * self.i_term
+
+        # Compute the derivative term
+        self.d_term = (error - self.last_error) / self.sample_time
+        D_out = self.kd * self.d_term
 
         # TODO: Understand if it's needed.
         # Anti-windup
@@ -50,8 +56,8 @@ class PIDController:
         # Salvataggio stati
         self.last_error = error
         self.last_y = y_measured
-        result = self.p_term + self.i_term + self.d_term
-        limits = torch.tensor([[0, 5], [-0.5, 0.5]])
+        result = self.p_term + I_out + D_out
+        limits = torch.tensor([[0, 2], [-0.5, 0.5]])
         result = torch.clamp(result, min=limits[:, 0], max=limits[:, 1])
         return result
 
