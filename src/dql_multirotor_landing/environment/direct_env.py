@@ -29,7 +29,7 @@ from lab_assets.agent import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
 from lab_assets.target import IW_HUB_CFG  # isort: skip
 
-XMAX, YMAX, ZMAX = 9.0, 9.0, 5.0
+XMAX, YMAX, ZMAX = 100.0, 100.0, 100.0
 
 
 class QuadrotorEnvWindow(BaseEnvWindow):
@@ -193,8 +193,8 @@ class QuadrotorEnv(DirectRLEnv):
     #############################VENDITTELLI
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._actions = actions.clone().clamp(-1.0, 1.0)
-        self._thrust[:, 0, 2] = self._actions[:, 0] * self._agent_weight * (self._actions[:, 0] + 1.0) / 2.0
+        self._actions = actions.clone()
+        self._thrust[:, 0, 2] = self._actions[:, 0] * self._agent_weight  # * (self._actions[:, 0] + 1.0) / 2.0
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:4]
         self._target_action = self._actions[:, 4:6] * self._target_masses.sum()
 
