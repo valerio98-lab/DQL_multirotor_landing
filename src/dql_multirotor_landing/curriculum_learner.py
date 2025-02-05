@@ -13,7 +13,7 @@ parser.add_argument("--task", type=str, default="Isaac-Quadrotor-Landing-V0", he
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
-args_cli.headless = True
+args_cli.headless = False
 # launch omniverse app
 
 app_launcher = AppLauncher(args_cli)
@@ -26,6 +26,7 @@ from typing import Optional, TypeAlias
 
 import gymnasium as gym
 import numpy as np
+import torch
 from omni.isaac.lab_tasks.utils.parse_cfg import parse_env_cfg
 
 from dql_multirotor_landing import logger
@@ -137,6 +138,17 @@ class Table(ABC):
             result = result[index.action_idx]
         return result
 
+    def __repr__(self) -> str:
+        return self.data.__repr__()
+
+    #     return (
+    #         f"Positions: {self.data[0, :]}\n"
+    #         + f"Velocities: {self.data[0, :]}\n"
+    #         + f"Accelerations: {self.data[0, :]}\n"
+    #         + f"Pitches: {self.data[0, :]}\n"
+    #         + f"Actions: {self.data[0, :]}\n"
+    #     )
+
 
 class QTable(Table):
     def __init__(
@@ -144,8 +156,8 @@ class QTable(Table):
     ) -> None:
         super().__init__(num_positions, num_velocities, num_accelerations, num_pitches, num_actions)
 
-    def transfer_learning(self, current_r_max: float, previous_r_max: float) -> None:
-        self.data = (current_r_max / previous_r_max) * self.data
+    def transfer_learning(self, previous_Qtable: "QTable", current_r_max: float, previous_r_max: float) -> None:
+        self.data = (current_r_max / previous_r_max) * previous_Qtable.data
 
 
 class StateCountPairTable(Table):
@@ -181,16 +193,16 @@ class CurriculumLearnerParameters:
     sigma: float = 0.1
     initial_exploration_rate: float = 1.0
     gamma: float = 0.99
-    x_max: float = 9
-    p_max: float = 5
-    v_max: float = 3
-    a_mpmax: float = 3
-    beta_p: float = 1 / 3
-    beta_v: float = 1 / 3
-    beta_a: float = 1 / 3
+    x_max: float = 4.5
+    p_max: float = 4.5
+    v_max: float = 3.39
+    a_mpmax: float = 1.28
+    beta_p: float = 0.01
+    beta_v: float = 0.1
+    beta_a: float = 1
     sigma_a: float = 0.416
     total_episodes: int = 10
-    max_timesteps_per_episode: int = 10
+    max_timesteps_per_episode: int = 100
 
 
 # endregion
@@ -233,20 +245,26 @@ class CurriculumLearner:
         """Number of possible discrete pitch angles"""
 
         # Double Q learning assumes we use two different Q tables
-        self.Q_table1 = QTable(
-            parameters.num_positions,
-            parameters.num_velocities,
-            parameters.num_accelerations,
-            parameters.num_pitches,
-            parameters.num_actions,
-        )
-        self.Q_table2 = QTable(
-            parameters.num_positions,
-            parameters.num_velocities,
-            parameters.num_accelerations,
-            parameters.num_pitches,
-            parameters.num_actions,
-        )
+        self.Q_tables1 = [
+            QTable(
+                parameters.num_positions,
+                parameters.num_velocities,
+                parameters.num_accelerations,
+                parameters.num_pitches,
+                parameters.num_actions,
+            )
+            for _ in range(self.total_curiculum_steps)
+        ]
+        self.Q_tables2 = [
+            QTable(
+                parameters.num_positions,
+                parameters.num_velocities,
+                parameters.num_accelerations,
+                parameters.num_pitches,
+                parameters.num_actions,
+            )
+            for _ in range(self.total_curiculum_steps)
+        ]
 
         self.state_action_pair_count = StateCountPairTable(
             parameters.num_positions,
@@ -289,7 +307,7 @@ class CurriculumLearner:
         self.exploration_rate = parameters.initial_exploration_rate
         """Exploration rate that exponentially decays."""
 
-        self.pid_controller = PIDController()
+        self.pid_controller = PIDController(set_point=[5, 0])
         self.moving_platform = MovingPlatform()
 
     def multi_resolution_train(self):
@@ -318,14 +336,27 @@ class CurriculumLearner:
                 # Get the curent known maximum reward using Eq: 28
                 current_r_max = state_space.get_max_reward()
                 # Apply transfer learning from the previous curriculum step using Eq: 31
-                self.Q_table1.transfer_learning(current_r_max, previous_r_max)
-                self.Q_table2.transfer_learning(current_r_max, previous_r_max)
-            logger.debug(f"{self.Q_table1=}")
-            logger.debug(f"{self.Q_table2=}")
+                self.Q_tables1[curriculum_step].transfer_learning(
+                    self.Q_tables1[curriculum_step - 1],
+                    current_r_max,
+                    previous_r_max,
+                )
+                self.Q_tables2[curriculum_step].transfer_learning(
+                    self.Q_tables2[curriculum_step - 1],
+                    current_r_max,
+                    previous_r_max,
+                )
 
-            self._double_q_learning(state_space)
+            self._double_q_learning(
+                self.Q_tables1[curriculum_step],
+                self.Q_tables2[curriculum_step],
+                state_space,
+            )
+
+            logger.debug(f"{self.Q_tables1[curriculum_step]=}")
+            logger.debug(f"{self.Q_tables2[curriculum_step]=}")
             self._decay_exploration_rate()
-            previous_r_max = current_r_max
+            previous_r_max = state_space.get_max_reward()
 
     def _learning_rate(self, index: StateCountPairIdx) -> float:
         """Returns the curent learning rate using Eq. 30"""
@@ -360,35 +391,35 @@ class CurriculumLearner:
             reward + self.gamma * behaviour_policy[next_idx] - decision_policy[current_idx]
         )
 
-    def _double_q_learning(self, state_space: mdp.StateSpace):
+    def _double_q_learning(self, Q_table1: QTable, Q_table2: QTable, state_space: mdp.StateSpace):
         for _episode in range(1, self.total_episodes):
             observation, _info = self.env.reset()
             current_continuous_state = mdp.ContinuousState(
-                observation["relative_position"][0],
-                observation["relative_velocity"][0],
-                observation["relative_acceleration"][0],
-                observation["relative_orientation"][0, 0],
+                torch.abs(observation["relative_position"][0]),
+                torch.abs(observation["relative_velocity"][0]),
+                torch.abs(observation["relative_acceleration"][0]),
+                torch.abs(observation["relative_orientation"][0, 0]).item(),
             )
-            logger.debug(f"{observation['relative_position'][0]=}")
             # Discretize the current state
+
             current_discrete_state = state_space.get_discretized_state(current_continuous_state)
             current_idx = QTableIdx(current_discrete_state)
-            exit()
-            for _episode in range(1, self.max_timesteps_per_episode):
+
+            for _timestep in range(1, self.max_timesteps_per_episode):
                 # Explore
                 if np.random.rand() < self.exploration_rate:
                     action = state_space.sample()
                 # Commit
                 else:
                     # Get the action based on both Q table1 and Q table2
-                    action = np.argmax((self.Q_table1[current_idx] + self.Q_table2[current_idx]) / 2)
+                    action = np.argmax((Q_table1[current_idx] + Q_table2[current_idx]) / 2)
                 current_idx.set_action_idx(int(action))
 
                 # Update the state action pair count
                 self.state_action_pair_count.update(current_idx)
                 thrust, yaw = self.pid_controller.output(
                     [
-                        observation["relative_position"][0, 2],
+                        torch.abs(observation["relative_position"][0, 2]),
                         observation["relative_acceleration"][0, 2],
                     ]
                 )
@@ -400,7 +431,7 @@ class CurriculumLearner:
                     pitch = observation["relative_orientation"][0, 0] - state_space.delta_angle
                 # Increase
                 elif action == 2:
-                    pitch = observation["relative_orientation"][0, 0] - state_space.delta_angle
+                    pitch = observation["relative_orientation"][0, 0] + state_space.delta_angle
 
                 action = Action(
                     thrust.item(),
@@ -413,13 +444,17 @@ class CurriculumLearner:
                     0,
                     0,
                 )
-                observation, _reward, terminated, truncated, _info = self.env.step(action)
-                next_continuous_state = mdp.ContinuousState(
-                    observation["relative_position"][0],
-                    observation["relative_velocity"][0],
-                    observation["relative_acceleration"][0],
-                    observation["relative_orientation"][0, 1],
+
+                observation, _reward, terminated, truncated, _info = self.env.step(
+                    action.to_tensor(self.env.unwrapped.device)  # type: ignore
                 )
+                next_continuous_state = mdp.ContinuousState(
+                    torch.abs(observation["relative_position"][0]),
+                    torch.abs(observation["relative_velocity"][0]),
+                    torch.abs(observation["relative_acceleration"][0]),
+                    torch.abs(observation["relative_orientation"][0, 0]).item(),
+                )
+                state_space._set_last_state(current_continuous_state)
                 next_discrete_state = state_space.get_discretized_state(next_continuous_state)
                 next_idx = QTableIdx(next_discrete_state)
 
@@ -428,8 +463,8 @@ class CurriculumLearner:
                 # Update either Q table1 or Q table2
                 if np.random.rand() < 0.5:
                     self._update_q_table(
-                        self.Q_table1,
-                        self.Q_table2,
+                        Q_table1,
+                        Q_table2,
                         current_idx,
                         next_idx,
                         reward,
@@ -437,8 +472,8 @@ class CurriculumLearner:
 
                 else:
                     self._update_q_table(
-                        self.Q_table2,
-                        self.Q_table1,
+                        Q_table2,
+                        Q_table1,
                         current_idx,
                         next_idx,
                         reward,
@@ -447,6 +482,7 @@ class CurriculumLearner:
                 if terminated or truncated:
                     break
                 current_idx = next_idx
+                current_continuous_state = next_continuous_state
 
 
 CurriculumLearner().multi_resolution_train()
