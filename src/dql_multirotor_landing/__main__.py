@@ -93,21 +93,24 @@ def main():
             height = observation["relative_position"][0, 2]
             yaw = observation["agent_angular_velocity"]
             print(yaw)
-            if iteration == 300:
-                thrust, yaw_i = pid_controller.output([abs(height), yaw])
-                yaw_i = -0.005
-            else:
-                thrust, yaw_i = pid_controller.output([abs(height), yaw])
-                yaw_i = yaw_i.item()
-                thrust = thrust.item()
+            thrust, yaw_i = pid_controller.output([abs(height), yaw])
+            # if iteration == 300:
+            #     thrust, yaw_i = pid_controller.output([abs(height), yaw])
+            #     yaw_i = -0.005
+            # else:
+            #     thrust, yaw_i = pid_controller.output([abs(height), yaw])
+            #     yaw_i = yaw_i.item()
+            #     thrust = thrust.item()
 
             _, v_mp, _, w_mp = target_controller.compute_wheel_velocity(dt=0.02)
+            pitch = torch.tensor(1.0)
+            pitch2rad = torch.deg2rad(pitch)
             actions = Actions(
                 # ths[iteration],
-                thrust,
+                thrust.item(),
                 0.0,
                 0.0,
-                yaw_i,
+                0.0,
                 w_mp,
                 w_mp,
             ).to_tensor(

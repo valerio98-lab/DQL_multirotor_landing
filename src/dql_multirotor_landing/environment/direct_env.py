@@ -20,7 +20,13 @@ from omni.isaac.lab.sensors import RayCaster, RayCasterCfg, patterns
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import subtract_frame_transforms
+from omni.isaac.lab.utils.math import (
+    subtract_frame_transforms,
+    quat_from_euler_xyz,
+    quat_inv,
+    quat_mul,
+    euler_xyz_from_quat,
+)
 
 ##
 # Pre-defined configs
@@ -29,7 +35,7 @@ from lab_assets.agent import CRAZYFLIE_CFG  # isort: skip
 from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
 from lab_assets.target import IW_HUB_CFG  # isort: skip
 
-XMAX, YMAX, ZMAX = 9.0, 9.0, 9.0
+XMAX, YMAX, ZMAX = 100.0, 100.0, 100.0
 
 
 class QuadrotorEnvWindow(BaseEnvWindow):
@@ -193,9 +199,53 @@ class QuadrotorEnv(DirectRLEnv):
     #############################VENDITTELLI
 
     def _pre_physics_step(self, actions: torch.Tensor):
+
+        self.gain_attitude = torch.tensor([0.1, 0.1, 0.035], device="cuda")  # Guadagni per roll, pitch, yaw
+        self.gain_angular_rate = torch.tensor([0.1, 0.1, 0.02], device="cuda")
         self._actions = actions.clone()
+
+        # 2. Ottenere l'orientamento attuale del drone come quaternione
+        current_quaternion = self._agent.data.root_state_w[:, 3:7].round(decimals=3)
+
+        # 3. Convertire le azioni RL in angoli desiderati (roll e pitch)
+        desired_roll = self._actions[:, 1]
+        desired_pitch = self._actions[:, 2]
+        desired_yaw_rate = self._actions[:, 3]  # Controllo del yaw rate
+
+        # 4. Creare il quaternione desiderato
+        desired_quaternion = quat_from_euler_xyz(desired_roll, desired_pitch, torch.zeros_like(desired_roll))
+
+        # 5. Calcolare l'errore angolare tra il quaternione attuale e quello desiderato
+        quaternion_error = quat_mul(desired_quaternion, quat_inv(current_quaternion))
+
+        # 6. Convertire l'errore angolare in angoli di Eulero (roll, pitch, yaw)
+        angle_error = torch.stack(euler_xyz_from_quat(quaternion_error), dim=-1)
+
+        # 7. Ottenere la velocità angolare attuale del drone
+        current_angular_velocity = self._agent.data.root_state_w[:, 10:13].round(decimals=3)
+        print("Velocità angolare attuale:", current_angular_velocity)
+        # exit()
+
+        # 8. Definire la velocità angolare desiderata (zero per roll e pitch, valore specifico per yaw)
+        desired_angular_velocity = torch.zeros_like(current_angular_velocity)
+        desired_angular_velocity[:, 2] = desired_yaw_rate
+
+        print("Quaternione attuale:", current_quaternion)
+        print("Quaternione desiderato:", desired_quaternion)
+        print("Errore angolare:", angle_error)
+        print("Velocità angolare attuale:", current_angular_velocity)
+        # 9. Calcolare l'errore nella velocità angolare
+        angular_velocity_error = current_angular_velocity - desired_angular_velocity
+
+        # 10. Calcolare i momenti da applicare (controllore tipo PID)
+        moment = -self.gain_attitude * angle_error - self.gain_angular_rate * angular_velocity_error
+        print("Momenti:", moment)
+        # 11. Applicare i momenti calcolati
+        # self._moment = torch.zeros_like(self._actions[:, 1:4])
+        # self._moment[:, :] = moment
+
         self._thrust[:, 0, 2] = self._actions[:, 0] * self._agent_weight  # * (self._actions[:, 0] + 1.0) / 2.0
-        self._moment[:, 0, :] = self._actions[:, 1:4] * self.cfg.moment_scale
+        self._moment[:, 0, :] = moment
         self._target_action = self._actions[:, 4:6]  # * self._target_masses.sum()
 
     def _apply_action(self):
@@ -203,6 +253,9 @@ class QuadrotorEnv(DirectRLEnv):
         self._target.set_joint_velocity_target(self._target_action, joint_ids=self._joint_id)
 
     ###############################VENDITTELLI
+
+    def _test_(self):
+        pass
 
     def _com_acc(self, robot_acc: torch.Tensor, robot_masses: torch.Tensor) -> torch.Tensor:
         """
@@ -306,11 +359,13 @@ class QuadrotorEnv(DirectRLEnv):
         self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
         self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
         self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+
         # Reset robot state
         joint_pos = self._agent.data.default_joint_pos[env_ids]
         joint_vel = self._agent.data.default_joint_vel[env_ids]
         default_root_state = self._agent.data.default_root_state[env_ids]
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        print("Default root state: ", default_root_state)
         self._agent.write_root_pose_to_sim(default_root_state[:, :7], env_ids)  # type: ignore
         self._agent.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)  # type: ignore
         self._agent.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)  # type: ignore
