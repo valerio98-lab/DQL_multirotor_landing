@@ -4,7 +4,6 @@
         "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab_tasks",
         "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab",
         "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.core"
-
     ],
     "spellright.language": [
         "en-US-10-1."
@@ -14,5 +13,9 @@
         "latex",
         "plaintext",
         "python"
-    ]
+    ],
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "cmake.sourceDirectory": "/home/haislich/dql_multirotor_landing/src/dql_multirotor_landing"
 }

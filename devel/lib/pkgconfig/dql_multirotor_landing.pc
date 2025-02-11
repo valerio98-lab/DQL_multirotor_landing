@@ -1,0 +1,8 @@
+prefix=/home/haislich/dql_multirotor_landing/devel
+
+Name: dql_multirotor_landing
+Description: Description of dql_multirotor_landing
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 
