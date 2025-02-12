@@ -1,0 +1,8 @@
+prefix=/home/haislich/dql_multirotor_landing/devel
+
+Name: moving_platform
+Description: Description of moving_platform
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 
