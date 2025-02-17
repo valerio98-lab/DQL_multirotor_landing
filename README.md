@@ -1,6 +1,6 @@
 # DQL_multirotor_landing
 
-Implementation of Double Q-Learning with Curriculum Learning for Autonomous UAV Landing on a Moving Platform using NVIDIA IsaacLab for Realistic Physics and Simulation.
+Implementation of Double Q-Learning with Curriculum Learning for Autonomous UAV Landing on a Moving Platform 
 
 ## How to run
 
