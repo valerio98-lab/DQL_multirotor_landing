@@ -8,28 +8,35 @@ from geometry_msgs.msg import Pose, TransformStamped
 from std_msgs.msg import Bool, Float64
 from training_q_learning.parameters import Parameters
 from tf.transformations import quaternion_from_euler
-from training_q_learning.srv import ResetRandomSeed, ResetRandomSeedResponse
 
 
 class MovingPlatform:
     """
-    This class models a moving platform following a periodic sinusoidal trajectory along both the x-axis and y-axis.
-    The motion is defined by sinusoidal functions that determine position and velocity based on the specified trajectory parameters.
-
-    The motion equations used are:
-        x_mp(t) = r_x * sin(ω_x * t)   # Position along x
-        y_mp(t) = r_y * sin(ω_y * t)   # Position along y
-        v_x(t)  = r_x * ω_x * cos(ω_x * t)   # Velocity along x
-        v_y(t)  = r_y * ω_y * cos(ω_y * t)   # Velocity along y
-
-    Where:
-        - r_x  : Amplitude of motion along the x-axis (meters)
-        - r_y  : Amplitude of motion along the y-axis (meters)
-        - ω_x  : Angular frequency of motion along x (ω_x = t_x / r_x).
-        - ω_y  : Angular frequency of motion along y (ω_y = t_y / r_y).
-        - t    : Time elapsed in the simulation.
-        
-    The platform oscillates along the x and y axes independently, following a sinusoidal pattern determined by the specified speed and radius parameters.
+    This class models a moving platform that can follow different trajectory modes.
+    
+    Supported trajectories:
+      1. Mono-dimensional sinusoidal trajectory:
+         - Motion is defined only along the x-axis (y remains constant).
+         - Equations:
+              x(t) = r_x * sin(ω * t) + x0
+              y(t) = constant (y0)
+              u(t) = r_x * ω * cos(ω * t)
+              v(t) = 0
+              
+      2. Figure-eight trajectory (using a lemniscate of Gerono):
+         - Motion follows a figure-eight pattern in the xy-plane.
+         - Equations:
+              x(t) = r_x * cos(ω * t) + x0
+              y(t) = r_y * sin(ω * t) * cos(ω * t) + y0
+              u(t) = -r_x * ω * sin(ω * t)
+              v(t) = r_y * ω * (cos(ω * t)² - sin(ω * t)²)
+              
+    Parameters:
+      - r_x, r_y: Amplitudes (or effective radii) along the x and y axes (meters)
+      - t_x, t_y: Parameters used to compute the angular frequency (ω = t_x / r_x, etc.)
+      - t: Time elapsed in the simulation
+      
+    The trajectory mode is determined by the ROS parameter "trajectory_type".
     """
 
     def __init__(self):
@@ -45,7 +52,7 @@ class MovingPlatform:
 
         # Retrieve trajectory parameters from ROS parameters
         self.parameters = Parameters()
-        self.trajectory_type = rospy.get_param(f"{config_path}/moving_platform/trajectory_type", "rectilinear_periodic_straight")
+        self.trajectory_type = rospy.get_param(f"{config_path}/moving_platform/trajectory_type", "rpm")
         self.t_x = float(rospy.get_param(f"{config_path}/moving_platform/t_x", "1"))
         self.frequency = float(rospy.get_param(f"{config_path}/moving_platform/frequency", "100"))
         self.start_position = rospy.get_param(
@@ -78,17 +85,31 @@ class MovingPlatform:
 
     def compute_trajectory(self):
         """
-        Computes the trajectory (x, y) of the moving platform and updates its Pose.
-        
-        The method updates self.pose.position.x, self.pose.position.y, and the horizontal velocities (u, v)
-        based on the specified horizontal trajectory type.
+        Computes the trajectory (x, y) of the moving platform and updates its Pose,
+        based on the specified trajectory type. See above for trajectory and maths details.
         """
-        omega = self.t_x / self.r_x
-        omega_y = self.t_y / self.r_y
-        self.pose.position.x = self.r_x * np.sin(omega * self.t) + self.start_position["x"]
-        self.pose.position.y = self.r_y * np.sin(omega_y * self.t) + self.start_position["y"]
-        self.u = self.r_x * omega * np.cos(omega * self.t)
-        self.v = self.r_y * omega_y * np.cos(omega_y * self.t)
+        #rospy.loginfo("Computing trajectory", self.trajectory_type)
+        if self.trajectory_type == "eight":
+            self.r_x = 3
+            self.r_y = 3
+            self.t_x = 0.8
+            self.t_y = 0.8
+            omega = self.t_x / self.r_x
+            self.pose.position.x = self.r_x * np.cos(omega * self.t) + self.start_position["x"]
+            self.pose.position.y = self.r_y * np.sin(omega * self.t) * np.cos(omega * self.t) + self.start_position["y"]
+
+            self.u = -self.r_x * omega * np.sin(omega * self.t)
+            self.v = self.r_y * omega * (np.cos(omega * self.t)**2 - np.sin(omega * self.t)**2)
+        else:
+            ## position and velocity along y is constant to 0 for a mono-dimensional trajectory, 
+            # however we keep the implementation along y for a possible future extension
+            
+            omega = self.t_x / self.r_x
+            omega_y = 0 ## constant to 0 for a mono-dimensional trajectory
+            self.pose.position.x = self.r_x * np.sin(omega * self.t) + self.start_position["x"]
+            self.pose.position.y = self.r_y * np.sin(omega_y * self.t) + self.start_position["y"]
+            self.u = self.r_x * omega * np.cos(omega * self.t)
+            self.v = self.r_y * omega_y * np.cos(omega_y * self.t)
 
         self.t += self.delta_t
 
@@ -119,7 +140,20 @@ class MovingPlatform:
         
         Returns:
             tuple: Updated platform state in the format 
-                   (Pose, u, v, w, phi, theta, psi)
+                   (Pose, u, v)
         """
         self.compute_trajectory()
         return self.pose, self.u, self.v
+
+
+# if __name__ == "__main__":
+#     rospy.init_node("moving_platform_test")
+#     mp = MovingPlatform()
+#     rate = rospy.Rate(10)  # 10 Hz
+
+#     while not rospy.is_shutdown():
+#         pose, u, v = mp.update()
+#         rospy.loginfo("Posizione: x = %.2f, y = %.2f", pose.position.x, pose.position.y)
+#         rospy.loginfo("Velocità: u = %.2f, v = %.2f", u, v)
+#         rate.sleep()
+    
