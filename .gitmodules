@@ -1,6 +1,16 @@
 [submodule "submodules/rotors_simulator"]
 	path = submodules/rotors_simulator
 	url = https://github.com/robot-perception-group/rotors_simulator
+[submodule "submodules/mav_comm"]
+	path = submodules/mav_comm
+	url = https://github.com/ethz-asl/mav_comm/tree/46e4d40a13a37e768e438600ee58c824dffa570d
+[submodule "submodules/LibrePilot"]
+	path = submodules/LibrePilot
+	url = https://github.com/robot-perception-group/LibrePilot.git
+	branch = rl_landing_control
+[submodule "submodules/pid"]
+	path = submodules/pid
+	url = https://github.com/tasbolat1/pid.git
 [submodule "submodules/moving_platform_control"]
 	path = submodules/moving_platform_control
 	url = https://github.com/robot-perception-group/moving_platform_control.git
