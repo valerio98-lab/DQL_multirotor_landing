@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+      <param name="use_sim_time" value="false"/>
+      <arg name="mp_name" default="moving_platform"/>
+      <arg name="vmax" default="0.4"/>
+      <arg name="rmax" default="0.5"/>
+      <arg name="x_offset" default="0"/>
+      <arg name="update_freq" default="10"/>
+      
+        <node name="mp_setpoints_node" pkg="moving_platform_control" type="mp_setpoints.py" respawn="true" output="screen">
+        <param name="mp_name" value="$(arg mp_name)"/>
+        <param name="vmax" value="$(arg vmax)"/>
+        <param name="rmax" value="$(arg rmax)"/>
+        <param name="x_offset" value="$(arg x_offset)"/>
+        <param name="update_freq" value="$(arg update_freq)"/>
+        </node>
+</launch>

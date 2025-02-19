@@ -1,0 +1,4 @@
+#Ignore build directories
+/build
+/devel
+.catkin_workspace

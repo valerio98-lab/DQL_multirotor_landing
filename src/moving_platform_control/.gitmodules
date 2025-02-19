@@ -1,0 +1,6 @@
+[submodule "submodules/LibrePilot"]
+	path = submodules/LibrePilot
+	url = https://github.com/robot-perception-group/LibrePilot.git
+[submodule "submodules/pid"]
+	path = submodules/pid
+	url = https://github.com/tasbolat1/pid.git
