@@ -39,6 +39,7 @@ class Mdp:
             "velocity": [1.0],
             "acceleration": [1.0],
         },
+        curriculum_steps=1,
     ) -> None:
         self.action_values = self.initial_action_values
         """Latest performed action"""
@@ -47,7 +48,9 @@ class Mdp:
         self.previous_discrete_state: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
         self.current_continuos_observation = ObservationRelativeState()
         self.limits = limits
-        self.curiculum_steps = min(len(values) for values in self.limits.values())
+        self.curiculum_steps = (
+            curriculum_steps  # min(len(values) for values in self.limits.values())
+        )
         # TODO: For now we pass the current limits, this might change in the future
         self.current_shaping_value = {
             "position": np.zeros(self.curiculum_steps),
@@ -61,10 +64,6 @@ class Mdp:
         }
         """Stores the current shaping value for each curriculum timestep"""
         self.max_possible_reward_for_one_timestep = 0.0
-
-    @property
-    def curriculum_steps(self):
-        min(len(values) for values in self.limits.values())
 
     def _latest_valid_curriculum_step_for_state(
         self,
@@ -112,7 +111,7 @@ class Mdp:
         )
 
         position_contraction = self.beta
-        if latest_valid_curriculum_step < self.curiculum_steps:
+        if latest_valid_curriculum_step < (self.curiculum_steps - 1):
             position_contraction = (
                 self.limits["position"][latest_valid_curriculum_step + 1]
                 / self.limits["position"][latest_valid_curriculum_step]

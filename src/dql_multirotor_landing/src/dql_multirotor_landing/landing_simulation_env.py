@@ -253,7 +253,7 @@ class LandingSimulationEnv(gym.Env):
 
         # Execute reward function once to update the time dependent components in the reward function, when a training and not a test is running
         if self.test_mode_activated:
-            _ = self.mdp.reward((self.observation_continous))
+            _ = self.mdp.reward()
 
         # Update the parameters required to run the simulation
 
@@ -415,7 +415,7 @@ class LandingSimulationEnv(gym.Env):
 
         # Default reward if episode continues
         if done_numeric == 0:
-            reward = 0 if self.test_mode_activated else self.mdp.reward(msg_rel_state)
+            reward = 0 if self.test_mode_activated else self.mdp.reward()
             return False, reward
 
         # Print message & compute reward
