@@ -1,8 +1,0 @@
-prefix=/home/haislich/dql_multirotor_landing/devel
-
-Name: multiotor_controller
-Description: Description of multiotor_controller
-Version: 0.0.0
-Cflags: 
-Libs: -L${prefix}/lib 
-Requires: 

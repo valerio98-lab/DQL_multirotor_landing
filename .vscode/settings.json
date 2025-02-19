@@ -1,9 +1,8 @@
 {
     "python.analysis.extraPaths": [
-        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab_assets",
-        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab_tasks",
-        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.lab",
-        "${workspaceFolder}/IsaacLab/source/extensions/omni.isaac.core"
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "./devel/lib/python3/dist-packages",
+        "./src/dql_multirotor_landing/src"
     ],
     "spellright.language": [
         "en-US-10-1."
@@ -15,7 +14,8 @@
         "python"
     ],
     "python.autoComplete.extraPaths": [
+        "./devel/lib/python3/dist-packages",
         "/opt/ros/noetic/lib/python3/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/haislich/dql_multirotor_landing/src/trainer"
+    "cmake.sourceDirectory": "/home/haislich/dql_multirotor_landing/src/dql_multirotor_landing",
 }
