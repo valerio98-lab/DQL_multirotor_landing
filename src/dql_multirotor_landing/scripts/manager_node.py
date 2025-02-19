@@ -6,20 +6,20 @@ from geometry_msgs.msg import PoseStamped, TwistStamped, Vector3Stamped, Quatern
 from gazebo_msgs.msg import ModelStates
 from gazebo_msgs.srv import SetModelState
 from nav_msgs.msg import Odometry
-from training_q_learning.msg import LandingSimulationObjectState, ObservationRelativeState, Action
-from training_q_learning.srv import ResetRandomSeed, ResetRandomSeedResponse
-from training_q_learning.parameters import Parameters
+from dql_multirotor_landing.msg import LandingSimulationObjectState, ObservationRelativeState, Action
+from dql_multirotor_landing.srv import ResetRandomSeed, ResetRandomSeedResponse
+from dql_multirotor_landing.parameters import Parameters
 from mav_msgs.msg import RollPitchYawrateThrust
 
-# from training_q_learning.moving_platform import MovingPlatformNode
+# from dql_multirotor_landing.moving_platform import MovingPlatformNode
 from gazebo_msgs.msg import ModelState, ModelStates
 from geometry_msgs.msg import Pose
-from training_q_learning.moving_platform import MovingPlatform
+from dql_multirotor_landing.moving_platform import MovingPlatform
 
-# from training_q_learning.rotors_interface_cpp import RotorsInterface_CPP # type: ignore
-from training_q_learning.filters import KalmanFilter3D
-from training_q_learning.observation_utils import ObservationUtils, ObservationRelativeStateData
-from tf.transformations import euler_from_quaternion, quaternion_from_euler
+# from dql_multirotor_landing.rotors_interface_cpp import RotorsInterface_CPP # type: ignore
+from dql_multirotor_landing.filters import KalmanFilter3D
+from dql_multirotor_landing.observation_utils import ObservationUtils, ObservationRelativeStateData
+from tf.transformations import euler_from_quaternion
 import numpy as np
 from dataclasses import dataclass
 
@@ -66,6 +66,9 @@ class ManagerNode:
     - Drone and platform states in both world and target frames.
     - Relative position and velocity of the drone with respect to the platform.
     - Observations and action commands for reinforcement learning.
+
+    Additionally, this class manages a set of functions interfacing with C++ nodes
+    responsible for PID control and thrust management.
     """
 
     def __init__(self):
@@ -84,6 +87,7 @@ class ManagerNode:
         self.kalman_filter = KalmanFilter3D(process_variance=1e-4, measurement_variance=self.noise_vel_sd)
 
         self.utils = ObservationUtils(
+            drone_name=self.drone_name,
             target_frame=self.target_frame,
             world_frame=self.gazebo_frame,
             noise_pos_sd=self.noise_pos_sd,
@@ -228,7 +232,9 @@ class ManagerNode:
 
         pos = (odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y, odom_msg.pose.pose.position.z)
 
-        self._broadcast_stability_tf(odom_msg.header.frame_id, yaw, pos)
+        transform_msg = self.utils.broadcast_stability_tf(odom_msg.header.frame_id, yaw, pos)
+        self.br.sendTransform(transform_msg)
+
 
 
     def _environment_callback(self, msg):
@@ -332,28 +338,6 @@ class ManagerNode:
         msg.linear_acceleration = state.linear_acceleration
         return msg
 
-    def _broadcast_stability_tf(self, source_frame, yaw, pos):
-        """
-        Publishes a stability reference frame transformation in the TF tree.
-
-        :param source_frame: The parent frame for the transformation.
-        :param yaw: Rotation around the Z-axis (yaw angle in radians).
-        :param pos: (x, y, z) position tuple.
-        """
-        current_time = rospy.Time.now()
-
-        transform_msg = tf2_ros.TransformStamped()
-        transform_msg.header = Header(stamp=current_time, frame_id=source_frame)
-        transform_msg.child_frame_id = f"{self.drone_name}/stability_axes"
-
-        x, y, z = pos
-        transform_msg.transform.translation = Vector3(x, y, z)
-
-        q = quaternion_from_euler(0.0, 0.0, yaw)
-        transform_msg.transform.rotation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
-
-        self.br.sendTransform(transform_msg)
-
     def _extract_yaw(self, orientation):
         """
         Extracts the yaw (rotation around Z-axis) from a quaternion.
@@ -361,7 +345,6 @@ class ManagerNode:
         :param orientation: Quaternion representing the object's orientation.
         :return: Yaw angle in radians.
         """
-        # Estrae solo il terzo elemento (yaw) dalla conversione
         return euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])[2]
 
     def _publish_rpy_thrust(self):
