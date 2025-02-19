@@ -1,2 +1,0 @@
-geometry_msgs/Vector3Stamped linear
-geometry_msgs/Vector3Stamped angular
