@@ -2,6 +2,8 @@ from typing import Tuple
 
 import numpy as np
 
+from dql_multirotor_landing import ASSETS_PATH  # type: ignore
+
 CurriculumIdx = int
 PositionIdx = int
 VelocityIdx = int
@@ -16,6 +18,7 @@ StateAction = Tuple[
     AngleIdx,
     ActionIdx,
 ]
+print(ASSETS_PATH)
 
 
 class DoubleQLearningAgent:
@@ -62,6 +65,55 @@ class DoubleQLearningAgent:
             - self.Q_table[current_state_action]
         )
         q_table[current_state_action] += loss
+
+    def save(self):
+        with open(
+            ASSETS_PATH / f"curriculum_steps{self.curriculum_steps}" / "Q_table.npy",
+            "wb",
+        ) as f:
+            np.save(f, self.Q_table)
+        with open(
+            ASSETS_PATH
+            / f"curriculum_steps{self.curriculum_steps}"
+            / "Q_table_double.npy",
+            "wb",
+        ) as f:
+            np.save(f, self.Q_table_double)
+        with open(
+            ASSETS_PATH
+            / f"curriculum_steps{self.curriculum_steps}"
+            / "state_action_counter.npy",
+            "wb",
+        ) as f:
+            np.save(f, self.state_action_counter)
+
+    def load(
+        self,
+    ):
+        try:
+            with open(
+                ASSETS_PATH
+                / f"curriculum_steps{self.curriculum_steps}"
+                / "Q_table.npy",
+                "rb",
+            ) as f:
+                np.load(f, self.Q_table)
+            with open(
+                ASSETS_PATH
+                / f"curriculum_steps{self.curriculum_steps}"
+                / "Q_table_double.npy",
+                "rb",
+            ) as f:
+                np.load(f, self.Q_table_double)
+            with open(
+                ASSETS_PATH
+                / f"curriculum_steps{self.curriculum_steps}"
+                / "state_action_counter.npy",
+                "rb",
+            ) as f:
+                np.load(f, self.state_action_counter)
+        except FileNotFoundError:
+            print("The requested load file were not found.")
 
     def transfer_learning(
         self, current_curriculum_step: int, transfer_learning_ratio: float
