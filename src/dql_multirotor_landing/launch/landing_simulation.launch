@@ -26,10 +26,18 @@
 	<arg name="Y" default="0.0" />
 	<arg name="Z" default="2.0" />
 	<param name="use_sim_time" value="true" />
-	<!-- Impostazioni per Gazebo -->
+	<arg name="ros_port" default="11311" />
+	<arg name="gaz_port" default="11351" />
+	<arg name="ros_ip" default="localhost" />
 	<env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models" />
 	<env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models" />
+	<!-- Impostazioni per Gazebo -->
+	<!--
+	<env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models" />
+	<env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models" />
+	-->
 	<!-- Includi il mondo di Gazebo -->
+	<env name="ROS_IP" value="$(arg ros_ip)" />
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
 		<arg name="world_name" value="$(find dql_multirotor_landing)/worlds/$(arg world_name).world" />
 		<arg name="debug" value="$(arg debug)" />
@@ -69,7 +77,7 @@
 	</group>
 	<!-- Infine, lancia il nodo unificato. Importante: questo deve essere l'ultimo nodo lanciato. -->
 	<group ns="$(arg drone_name)">
-		<node name="central_logic_node" pkg="dql_multirotor_landing" type="central_logic_node.py" output="screen">
+		<node name="manager_node" pkg="dql_multirotor_landing" type="manager_node.py" output="screen">
 			<param name="publish_rate_hz" value="100" />
 			<param name="noise_pos_sd" value="0" />
 			<param name="noise_vel_sd" value="0" />
