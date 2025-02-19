@@ -14,22 +14,22 @@ from gym.envs.registration import register
 from std_msgs.msg import Bool, Float64, Float64MultiArray
 from std_srvs.srv import Empty
 
-from training_q_learning.mdp import Mdp
-from training_q_learning.msg import (
+from dql_multirotor_landing.mdp import Mdp
+from dql_multirotor_landing.msg import (
     Action,  # type:ignore
     LandingSimulationObjectState,  # type:ignore
 )
-from training_q_learning.msg import (
+from dql_multirotor_landing.msg import (
     ObservationRelativeState as ObservationRelativeStateMsg,  # type:ignore
 )
-from training_q_learning.parameters import Parameters
-from training_q_learning.srv import ResetRandomSeed  # type:ignore
-from training_q_learning.utils import get_publisher
+from dql_multirotor_landing.parameters import Parameters
+from dql_multirotor_landing.srv import ResetRandomSeed  # type:ignore
+from dql_multirotor_landing.utils import get_publisher
 
 # Register the training environment in gym as an available one
 reg = register(
     id="landing_simulation-v0",
-    entry_point="training_q_learning.landing_simulation_env:LandingSimulationEnv",
+    entry_point="dql_multirotor_landing.landing_simulation_env:LandingSimulationEnv",
 )
 
 

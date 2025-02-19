@@ -5,8 +5,8 @@ This script starts a training session.
 # Questo fa schifo, ma ci serve per fare in modo che pylance cooperi e ci dia i suggerimenti corretti
 # Sembra essere necessario solo per gli script.
 
-from training_q_learning.double_q_learning import DoubleQLearningAgent
-from training_q_learning.trainer import Trainer
+from dql_multirotor_landing.double_q_learning import DoubleQLearningAgent
+from dql_multirotor_landing.trainer import Trainer
 
 if __name__ == "__main__":
     # TODO: This should be 4

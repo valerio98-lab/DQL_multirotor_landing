@@ -1,9 +1,9 @@
 [submodule "submodules/rotors_simulator"]
 	path = submodules/rotors_simulator
-	url = https://github.com/robot-perception-group/rotors_simulator
+	url = https://github.com/Haislich/rotors_simulator.git
 [submodule "submodules/mav_comm"]
 	path = submodules/mav_comm
-	url = https://github.com/ethz-asl/mav_comm/tree/46e4d40a13a37e768e438600ee58c824dffa570d
+	url = https://github.com/Haislich/mav_comm.git
 [submodule "submodules/LibrePilot"]
 	path = submodules/LibrePilot
 	url = https://github.com/robot-perception-group/LibrePilot.git

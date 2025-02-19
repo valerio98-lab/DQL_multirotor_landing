@@ -3,7 +3,7 @@ from typing import Dict, List, Literal, Tuple
 
 import numpy as np
 
-from training_q_learning.msg import ObservationRelativeState
+from dql_multirotor_landing.msg import ObservationRelativeState
 
 
 class Mdp:

@@ -5,8 +5,8 @@ from time import sleep
 import gym
 import numpy as np
 
-from training_q_learning.double_q_learning import DoubleQLearningAgent, StateAction
-from training_q_learning.landing_simulation_env import (
+from dql_multirotor_landing.double_q_learning import DoubleQLearningAgent, StateAction
+from dql_multirotor_landing.landing_simulation_env import (
     LandingSimulationEnv,  # noqa: F401
 )
 
