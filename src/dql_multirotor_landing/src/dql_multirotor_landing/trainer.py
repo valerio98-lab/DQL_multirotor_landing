@@ -48,8 +48,6 @@ class Trainer:
         self.__max_num_episodes = max_num_episodes
 
         # Logging
-        self.__log_freq = log_freq
-        self.__log_latest = log_latest
         self.__seed = seed
 
     def alpha(self, current_state_action: StateAction):
@@ -123,6 +121,9 @@ class Trainer:
                     )
                     next_state, reward, done, info = env.step(action)
                     current_state_action = current_state + (action,)
+                    self.__double_q_learning_agent.state_action_counter[
+                        current_state_action
+                    ] += 1
                     self.__double_q_learning_agent.update(
                         current_state_action,
                         next_state,
@@ -132,6 +133,9 @@ class Trainer:
                     )
                     if done:
                         break
+            self.__double_q_learning_agent.insert_curriculum_step(
+                current_curriculum_step
+            )
             self.__double_q_learning_agent.transfer_learning(
                 current_curriculum_step,
                 self.transfer_learning_ratio(
