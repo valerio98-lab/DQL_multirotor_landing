@@ -1,5 +1,7 @@
 """Module containing the definition for the trainer."""
 
+from pprint import pprint
+
 import gym
 import numpy as np
 
@@ -100,13 +102,14 @@ class Trainer:
         for current_curriculum_step in range(self.__curriculum_steps):
             self.current_curriculum_step = current_curriculum_step
             for current_episode in range(self.__max_num_episodes):
-                current_state = env.reset()
-                for _ in range(current_episode):
+                current_state, _ = env.reset()
+                for _ in range(400):
                     action = self.__double_q_learning_agent.guess(
                         current_state,
                         self.exploration_rate(current_episode, current_curriculum_step),
                     )
-                    next_state, reward, done, info = env.step(action)
+                    next_state, _next_state_y, reward, done, info = env.step(action)
+                    # print(f"{reward=},{done=},{info=}")
                     current_state_action = current_state + (action,)
                     self.__double_q_learning_agent.state_action_counter[
                         current_state_action
@@ -119,6 +122,9 @@ class Trainer:
                         reward,
                     )
                     if done:
+                        print("#" * 80)
+                        pprint(info)
+                        print("#" * 80)
                         break
             self.__double_q_learning_agent.insert_curriculum_step(
                 current_curriculum_step

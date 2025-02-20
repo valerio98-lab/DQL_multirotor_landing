@@ -9,5 +9,6 @@ float64 rel_a_x
 float64 rel_a_y
 float64 rel_a_z
 float64 pitch
+Bool contact
 
 
