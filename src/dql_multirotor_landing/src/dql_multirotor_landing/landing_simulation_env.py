@@ -9,18 +9,16 @@ from typing import List, Literal, Optional
 import gym
 import numpy as np
 import rospy
-from gazebo_msgs.msg import ContactsState, ModelState
+from gazebo_msgs.msg import ModelState
 from gazebo_msgs.srv import GetModelState, SetModelState
 from gym.envs.registration import register
 from std_msgs.msg import Bool
 from std_srvs.srv import Empty
 
 from dql_multirotor_landing.mdp import Mdp
-from dql_multirotor_landing.msg import Action
-from dql_multirotor_landing.msg import (
-    ObservationRelativeState as ObservationRelativeStateMsg,  # type:ignore
-)
-from dql_multirotor_landing.srv import ResetRandomSeed  # type:ignore
+from dql_multirotor_landing.msg import Action, Observation
+
+# from dql_multirotor_landing.srv import ResetRandomSeed
 from dql_multirotor_landing.utils import get_publisher
 
 # Register the training environment in gym as an available one
@@ -96,7 +94,7 @@ class LandingSimulationEnv(gym.Env):
                 'Direction must be either ["x"](training situation) or ["x","y"](test situation)'
             )
         self.initial_seed = initial_seed
-        # region: ROS comunication
+
         rospy.init_node("landing_simulation_gym_node")
 
         self.drone_name = "hummingbird"
@@ -108,17 +106,12 @@ class LandingSimulationEnv(gym.Env):
             "training/reset_simulation", Bool, queue_size=0
         )
         # Setup subscribers
-        # TODO: Metodo Getter
         self.observation_continuous_subscriber = rospy.Subscriber(
             f"/{self.drone_name}/training_observation_interface/observations",
-            ObservationRelativeStateMsg,
+            Observation,
             self.read_training_continuous_observations,
         )
 
-        # TODO: Da aggiungere al nodo centrale
-        self.mp_contact_subscriber = rospy.Subscriber(
-            "/moving_platform/contact", ContactsState, self.read_contact_state
-        )
         # Set up services
         rospy.wait_for_service("/gazebo/reset_world")
         self.reset_world_gazebo_service = rospy.ServiceProxy(
@@ -136,14 +129,6 @@ class LandingSimulationEnv(gym.Env):
         self.model_coordinates = rospy.ServiceProxy(
             "/gazebo/get_model_state", GetModelState
         )
-        # TODO: Remove (?)
-        rospy.wait_for_service("/moving_platform/reset_random_seed")
-        self.mp_reset_random_seed = rospy.ServiceProxy(
-            "/moving_platform/reset_random_seed", ResetRandomSeed
-        )
-        self.mp_reset_random_seed(str(self.initial_seed))
-
-        # endregion
 
         np.random.seed(self.initial_seed)
 
@@ -153,14 +138,13 @@ class LandingSimulationEnv(gym.Env):
             self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max)
 
         # Messages for ros comunication
-        self.observation_continuous = ObservationRelativeStateMsg()
+        self.observation_continuous = Observation()
         self.observation_continuous_actions = Action()
 
         # Other variables needed during execution
         self.current_curriculum_step = curriculum_step
         self.cumulative_reward = 0
 
-    # TODO: Dovrebbe prendere l'action.
     def publish_action_to_interface(
         self, continuous_action_x: Action, continuous_action_y: Optional[Action]
     ):
@@ -170,15 +154,9 @@ class LandingSimulationEnv(gym.Env):
             action.roll = continuous_action_y.roll
         self.action_to_interface_publisher.publish(action)
 
-    def read_training_continuous_observations(self, msg: ObservationRelativeStateMsg):
+    def read_training_continuous_observations(self, msg: Observation):
         """Functions reads the continouos observations of the environment whenever the corresponding subsriber to the corresponding ROS topic is triggered."""
         self.observation_continuous = msg
-
-    # TODO: Valeio deve darmi un setter adeguato
-    def read_contact_state(self, msg: ContactsState):
-        """Function checks if the contact sensor on top of the moving platform sends values. If yes, a flag is set to true."""
-        if msg.states:
-            self.mp_contact_occured = True
 
     def set_curriculum_step(self, curriculum_step: int):
         self.current_curriculum_step = 0
@@ -229,7 +207,15 @@ class LandingSimulationEnv(gym.Env):
         init_drone.pose.position.y = np.clip(
             y_init, self.flyzone_y[0], self.flyzone_y[1]
         )
-
+        object_coordinates_moving_platform = self.model_coordinates(
+            "moving_platform", "world"
+        )
+        object_coordinates_drone_after_reset = self.model_coordinates(
+            "hummingbird", "world"
+        )
+        print(
+            f"{object_coordinates_moving_platform=},{object_coordinates_drone_after_reset=}"
+        )
         init_drone.pose.position.z = self.z_init
         # Section 3.12:
         # Each landing trial will begin with the UAV being in hover state,

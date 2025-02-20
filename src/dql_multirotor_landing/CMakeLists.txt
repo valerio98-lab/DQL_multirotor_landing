@@ -52,10 +52,7 @@ catkin_python_setup()
 add_message_files(
   FILES
   Action.msg
-  LandingSimulationObjectState.msg
-  ObservationRelativeState.msg
-  TwistModified.msg
-  TwistStampedModified.msg
+  Observation.msg
 )
 
 ## Generate services in the 'srv' folder

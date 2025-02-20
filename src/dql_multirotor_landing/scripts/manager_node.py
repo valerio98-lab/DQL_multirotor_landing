@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
+from dataclasses import dataclass
+
+import numpy as np
 import rospy
 import tf2_ros
-from std_msgs.msg import Float64MultiArray, Bool, Header, Float64
-from geometry_msgs.msg import PoseStamped, TwistStamped, Vector3Stamped, Quaternion, Vector3
-from gazebo_msgs.msg import ModelStates
-from gazebo_msgs.srv import SetModelState
-from nav_msgs.msg import Odometry
-from dql_multirotor_landing.msg import LandingSimulationObjectState, ObservationRelativeState, Action
-from dql_multirotor_landing.srv import ResetRandomSeed, ResetRandomSeedResponse
-from dql_multirotor_landing.parameters import Parameters
-from mav_msgs.msg import RollPitchYawrateThrust
 
 # from dql_multirotor_landing.moving_platform import MovingPlatformNode
-from gazebo_msgs.msg import ModelState, ModelStates
-from geometry_msgs.msg import Pose
-from dql_multirotor_landing.moving_platform import MovingPlatform
+from gazebo_msgs.msg import ContactsState, ModelState, ModelStates
+from gazebo_msgs.srv import SetModelState
+from geometry_msgs.msg import (
+    Pose,
+    PoseStamped,
+    Quaternion,
+    TwistStamped,
+    Vector3,
+    Vector3Stamped,
+)
+from mav_msgs.msg import RollPitchYawrateThrust
+from nav_msgs.msg import Odometry
+from std_msgs.msg import Bool, Float64, Float64MultiArray, Header
+from tf.transformations import euler_from_quaternion
 
 # from dql_multirotor_landing.rotors_interface_cpp import RotorsInterface_CPP # type: ignore
 from dql_multirotor_landing.filters import KalmanFilter3D
-from dql_multirotor_landing.observation_utils import ObservationUtils, ObservationRelativeStateData
-from tf.transformations import euler_from_quaternion
-import numpy as np
-from dataclasses import dataclass
+from dql_multirotor_landing.moving_platform import MovingPlatform
+from dql_multirotor_landing.msg import Action, Observation
+from dql_multirotor_landing.observation_utils import ObservationData, ObservationUtils
+from dql_multirotor_landing.parameters import Parameters
+from dql_multirotor_landing.srv import ResetRandomSeed, ResetRandomSeedResponse
 
 
 @dataclass
@@ -76,15 +82,25 @@ class ManagerNode:
         self.parameters = Parameters()
         ns = rospy.get_namespace()
         self.node_name = "central_logic_node"
-        self.drone_name = rospy.get_param(ns + self.node_name + "/drone_name", "hummingbird")
-        self.publish_rate = float(rospy.get_param(ns + self.node_name + "/publish_rate_hz", "100"))
-        self.noise_pos_sd = float(rospy.get_param(ns + self.node_name + "/noise_pos_sd", "0.25"))
-        self.noise_vel_sd = float(rospy.get_param(ns + self.node_name + "/noise_vel_sd", "0.1"))
+        self.drone_name = rospy.get_param(
+            ns + self.node_name + "/drone_name", "hummingbird"
+        )
+        self.publish_rate = float(
+            rospy.get_param(ns + self.node_name + "/publish_rate_hz", "100")
+        )
+        self.noise_pos_sd = float(
+            rospy.get_param(ns + self.node_name + "/noise_pos_sd", "0.25")
+        )
+        self.noise_vel_sd = float(
+            rospy.get_param(ns + self.node_name + "/noise_vel_sd", "0.1")
+        )
 
         self.gazebo_frame = "world"
         self.target_frame = self.drone_name + "/stability_axes"
 
-        self.kalman_filter = KalmanFilter3D(process_variance=1e-4, measurement_variance=self.noise_vel_sd)
+        self.kalman_filter = KalmanFilter3D(
+            process_variance=1e-4, measurement_variance=self.noise_vel_sd
+        )
 
         self.utils = ObservationUtils(
             drone_name=self.drone_name,
@@ -99,7 +115,7 @@ class ManagerNode:
         self.mp_wf = State()
         self.drone_tf = State()
         self.mp_tf = State()
-        self.observation_data = ObservationRelativeStateData()
+        self.observation_data = ObservationData()
 
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer)
@@ -111,13 +127,17 @@ class ManagerNode:
         ##Set up service
         try:
             rospy.wait_for_service("/gazebo/set_model_state", timeout=10)
-            self.set_gazebo_state = rospy.ServiceProxy("/gazebo/set_model_state", SetModelState)
+            self.set_gazebo_state = rospy.ServiceProxy(
+                "/gazebo/set_model_state", SetModelState
+            )
         except rospy.ROSException:
             rospy.logerr("Service /gazebo/set_model_state not available")
             rospy.signal_shutdown("Service /gazebo/set_model_state not available")
 
         self.reset_service = rospy.Service(
-            "/moving_platform/reset_random_seed", ResetRandomSeed, self._reset_random_seed
+            "/moving_platform/reset_random_seed",
+            ResetRandomSeed,
+            self._reset_random_seed,
         )
         ##
 
@@ -125,54 +145,87 @@ class ManagerNode:
         self.moving_platform = MovingPlatform()
         self.pid_setpoints = PID_Setpoints(0, 0, 0, 0)
         self.effort = thrust_cmd(0, 0, 0, 0)
+        self.mp_contact_occured = False
 
     def _init_publisher(self):
         self.gazebo_pose_pub = rospy.Publisher(
             "/gazebo/set_model_state", ModelState, queue_size=3
-        ) 
+        )
 
         self.relative_vel_pub = rospy.Publisher(
-            "landing_simulation/relative_moving_platform_drone/state/twist", TwistStamped, queue_size=0
+            "landing_simulation/relative_moving_platform_drone/state/twist",
+            TwistStamped,
+            queue_size=0,
         )
         self.relative_pos_pub = rospy.Publisher(
-            "landing_simulation/relative_moving_platform_drone/state/pose", PoseStamped, queue_size=0
+            "landing_simulation/relative_moving_platform_drone/state/pose",
+            PoseStamped,
+            queue_size=0,
         )
         self.relative_rpy_pub = rospy.Publisher(
             "landing_simulation/relative_moving_platform_drone/debug_target_frame/roll_pitch_yaw",
             Float64MultiArray,
             queue_size=0,
         )
-        self.drone_state_world_pub = rospy.Publisher(
-            "landing_simulation/world_frame/drone/state", LandingSimulationObjectState, queue_size=0
-        )
         self.observation_pub = rospy.Publisher(
-            "training_observation_interface/observations", ObservationRelativeState, queue_size=0
+            "training_observation_interface/observations",
+            Observation,
+            queue_size=0,
         )
 
-        self._pub_vz_setpoint = rospy.Publisher("training_action_interface/setpoint/v_z", Float64, queue_size=3)
-        self._pub_vz_state = rospy.Publisher("training_action_interface/state/v_z", Float64, queue_size=3)
-        self._pub_yaw_setpoint = rospy.Publisher("training_action_interface/setpoint/yaw", Float64, queue_size=3)
-        self._pub_yaw_state = rospy.Publisher("training_action_interface/state/yaw", Float64, queue_size=3)
+        self._pub_vz_setpoint = rospy.Publisher(
+            "training_action_interface/setpoint/v_z", Float64, queue_size=3
+        )
+        self._pub_vz_state = rospy.Publisher(
+            "training_action_interface/state/v_z", Float64, queue_size=3
+        )
+        self._pub_yaw_setpoint = rospy.Publisher(
+            "training_action_interface/setpoint/yaw", Float64, queue_size=3
+        )
+        self._pub_yaw_state = rospy.Publisher(
+            "training_action_interface/state/yaw", Float64, queue_size=3
+        )
         self._pub_rpy_thrust = rospy.Publisher(
             "command/roll_pitch_yawrate_thrust", RollPitchYawrateThrust, queue_size=3
         )
 
     def _init_subscriber(self):
         rospy.Subscriber("odometry_sensor1/odometry", Odometry, self._odometry_callback)
-        rospy.Subscriber("/gazebo/model_states", ModelStates, self._environment_callback)
+        rospy.Subscriber(
+            "/gazebo/model_states", ModelStates, self._environment_callback
+        )
         rospy.Subscriber("training/reset_simulation", Bool, self._reset_callback)
-        rospy.Subscriber("training_action_interface/action_to_interface", Action, self._action_callback)
-
-        rospy.Subscriber("training_action_interface/control_effort/v_z", Float64, self._vz_effort_callback)
-        rospy.Subscriber("training_action_interface/control_effort/yaw", Float64, self._yaw_effort_callback)
         rospy.Subscriber(
-            "landing_simulation/relative_moving_platform_drone/state/pose", PoseStamped, self._pose_callback
-        )
-        rospy.Subscriber(
-            "landing_simulation/relative_moving_platform_drone/state/twist", TwistStamped, self._twist_callback
+            "training_action_interface/action_to_interface",
+            Action,
+            self._action_callback,
         )
 
-    def get_observation(self, drone_tf, mp_tf):
+        rospy.Subscriber(
+            "training_action_interface/control_effort/v_z",
+            Float64,
+            self._vz_effort_callback,
+        )
+        rospy.Subscriber(
+            "training_action_interface/control_effort/yaw",
+            Float64,
+            self._yaw_effort_callback,
+        )
+        rospy.Subscriber(
+            "landing_simulation/relative_moving_platform_drone/state/pose",
+            PoseStamped,
+            self._pose_callback,
+        )
+        rospy.Subscriber(
+            "landing_simulation/relative_moving_platform_drone/state/twist",
+            TwistStamped,
+            self._twist_callback,
+        )
+        rospy.Subscriber(
+            "/moving_platform/contact", ContactsState, self._read_contact_state_callback
+        )
+
+    def publish_obs(self, drone_tf, mp_tf):
         # Update the moving platform state
         pose, u, v = self.moving_platform.update()
         self._publish_trajectory(pose, u, v)
@@ -197,16 +250,12 @@ class ManagerNode:
         self.relative_rpy_pub.publish(rpy_msg)
 
         # Compute and publish observation data
-        obs_msg = self.utils.get_observation_from_env(rel_pos, rel_vel)
+        obs_msg = self.utils.get_observation(rel_pos, rel_vel, self.mp_contact_occured)
         self.observation_pub.publish(obs_msg)
 
         # return obs_msg
 
-    def get_drone_state_wf(self):
-        self.drone_state_world_pub.publish(self._compute_landing_state_msg(self.drone_wf))
-
     def _publish_trajectory(self, pose, u, v):
-
         gazebo_msg = ModelState()
         gazebo_msg.model_name = "moving_platform"
         gazebo_msg.reference_frame = "ground_plane"
@@ -230,12 +279,16 @@ class ManagerNode:
         """
         yaw = self._extract_yaw(odom_msg.pose.pose.orientation)
 
-        pos = (odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y, odom_msg.pose.pose.position.z)
+        pos = (
+            odom_msg.pose.pose.position.x,
+            odom_msg.pose.pose.position.y,
+            odom_msg.pose.pose.position.z,
+        )
 
-        transform_msg = self.utils.broadcast_stability_tf(odom_msg.header.frame_id, yaw, pos)
+        transform_msg = self.utils.broadcast_stability_tf(
+            odom_msg.header.frame_id, yaw, pos
+        )
         self.br.sendTransform(transform_msg)
-
-
 
     def _environment_callback(self, msg):
         """
@@ -319,24 +372,14 @@ class ManagerNode:
             setattr(self.pid_setpoints, setpoint, getattr(msg, setpoint))
         self._publish_setpoints()
 
+    def _read_contact_state_callback(self, msg: ContactsState):
+        """Function checks if the contact sensor on top of the moving platform sends values. If yes, a flag is set to true."""
+        if msg.states:
+            self.mp_contact_occured = True
+
     def _publish_setpoints(self):
         self._pub_vz_setpoint.publish(Float64(data=self.pid_setpoints.v_z))
         self._pub_yaw_setpoint.publish(Float64(data=self.pid_setpoints.yaw))
-
-    def _compute_landing_state_msg(self, state):
-        """
-        Converts a given state into a LandingSimulationObjectState message.
-
-        :param state: The state object to be converted.
-        :return: LandingSimulationObjectState message with the current timestamp.
-        """
-        msg = LandingSimulationObjectState()
-        msg.header.stamp = rospy.Time.now()
-        msg.header.frame_id = state.pose.header.frame_id
-        msg.pose = state.pose
-        msg.twist = state.twist
-        msg.linear_acceleration = state.linear_acceleration
-        return msg
 
     def _extract_yaw(self, orientation):
         """
@@ -345,7 +388,9 @@ class ManagerNode:
         :param orientation: Quaternion representing the object's orientation.
         :return: Yaw angle in radians.
         """
-        return euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])[2]
+        return euler_from_quaternion(
+            [orientation.x, orientation.y, orientation.z, orientation.w]
+        )[2]
 
     def _publish_rpy_thrust(self):
         """
@@ -369,7 +414,6 @@ class ManagerNode:
         """
         rate = rospy.Rate(self.publish_rate)
         while not rospy.is_shutdown():
-
             # Transform drone and moving platform states into the target frame
             check_trans, drone_tf, mp_tf = self.utils.transform_world_to_target_frame(
                 drone_wf=self.drone_wf,
@@ -382,8 +426,7 @@ class ManagerNode:
                 rate.sleep()
                 continue
 
-            self.get_observation(drone_tf, mp_tf)
-            self.get_drone_state_wf()
+            self.publish_obs(drone_tf, mp_tf)
 
             # Apply control commands to the drone publishing towards c++ controllers
             self._publish_rpy_thrust()

@@ -3,7 +3,7 @@ from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 
-from dql_multirotor_landing.msg import Action, ObservationRelativeState
+from dql_multirotor_landing.msg import Action, Observation
 
 
 @dataclass
@@ -62,10 +62,10 @@ class Mdp:
         None,
         0,
         0,
+        0,
         # Section 4.2: "For all trainings we used [...]
         # a vertical velocity of v_z = -0.1m/s"
         -0.1,
-        0,
     )
 
     def __init__(
@@ -92,7 +92,7 @@ class Mdp:
         self.delta_t = 1 / f_ag
         self.current_discrete_state: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
         self.previous_discrete_state: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
-        self.current_continuos_observation = ObservationRelativeState()
+        self.current_continuous_observation = Observation()
         self.limits = Limits(working_curriculum_step)
         self.current_shaping_value = RewardShapingValue()
         self.previous_shaping_value = RewardShapingValue()
@@ -118,7 +118,6 @@ class Mdp:
     def _discretiazion_function(
         self, continuous_value: float, goal: float, limit: float
     ):
-        # print(f"Discretization_func, {continuous_value=}, {goal=} ,{limit=}")
         if -limit <= continuous_value < -goal:
             return 0
         elif -goal <= continuous_value <= goal:
@@ -128,17 +127,17 @@ class Mdp:
 
     def discrete_state(
         self,
-        current_continuos_observation: ObservationRelativeState,
+        current_continuous_observation: Observation,
     ):
-        self.current_continuos_observation = current_continuos_observation
+        self.current_continuous_observation = current_continuous_observation
         continuous_position = np.clip(
-            current_continuos_observation.rel_p_x / self.p_max, -1, 1
+            current_continuous_observation.rel_p_x / self.p_max, -1, 1
         )
         continuous_velocity = np.clip(
-            current_continuos_observation.rel_v_x / self.v_max, -1, 1
+            current_continuous_observation.rel_v_x / self.v_max, -1, 1
         )
         continuous_acceleration = np.clip(
-            current_continuos_observation.rel_a_x / self.a_max, -1, 1
+            current_continuous_observation.rel_a_x / self.a_max, -1, 1
         )
 
         latest_valid_curriculum_step = min(
@@ -189,12 +188,12 @@ class Mdp:
         )
         if self.direction == "x":
             discrete_angle = np.argmin(
-                np.abs(self.discrete_angles - current_continuos_observation.pitch)
+                np.abs(self.discrete_angles - self.action_values.pitch)
             )
         # TODO: remove false
         elif False and self.direction == "y":
             discrete_angle = np.argmin(
-                np.abs(self.discrete_angles - current_continuos_observation.roll)
+                np.abs(self.discrete_angles - current_continuous_observation.roll)
             )
         else:
             raise ValueError(f"Direction {self.direction} is not a valid direction")
@@ -227,7 +226,7 @@ class Mdp:
 
         # TODO: REMOVE THIS CHECK
         # Touch contact has priority over everything it's a valid assumption
-        if False and self.current_continuos_observation.contact:
+        if False and self.current_continuous_observation.contact:
             self.done = 0
         # Goal state reached
         elif (
@@ -243,19 +242,19 @@ class Mdp:
         elif self.step_count > self.t_max * self.f_ag:
             self.done = 2
         # Reached minimum alitude
-        # elif self.current_continuos_observation.rel_p_z > 0.1:
+        # elif self.current_continuous_observation.rel_p_z > 0.1:
         #     self.done = 3
         elif (
-            self.current_continuos_observation.rel_p_x < self.flyzone_x[0]
-            or self.current_continuos_observation.rel_p_x > self.flyzone_x[1]
+            self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
+            or self.current_continuous_observation.rel_p_x > self.flyzone_x[1]
         ):
             self.done = 4
         elif (
-            self.current_continuos_observation.rel_p_y < self.flyzone_y[0]
-            or self.current_continuos_observation.rel_p_y > self.flyzone_y[1]
+            self.current_continuous_observation.rel_p_y < self.flyzone_y[0]
+            or self.current_continuous_observation.rel_p_y > self.flyzone_y[1]
         ):
             self.done = 5
-        elif self.current_continuos_observation.rel_p_z > self.flyzone_z[1]:
+        elif self.current_continuous_observation.rel_p_z > self.flyzone_z[1]:
             self.done = 6
         # Reached minimum alitude
         else:
@@ -263,8 +262,8 @@ class Mdp:
         return self.done
 
     def reward(self):
-        continuous_position = self.current_continuos_observation.rel_p_x
-        continuous_velocity = self.current_continuos_observation.rel_v_x
+        continuous_position = self.current_continuous_observation.rel_p_x
+        continuous_velocity = self.current_continuous_observation.rel_v_x
 
         # Normalize
         normalized_continuous_position = np.clip(
@@ -286,7 +285,6 @@ class Mdp:
 
         # Il paper non e' chiaro su questo punto, leggendo il paper infatti mai viene fatto riferimento ai curriculum step precedenti
         # Tutavia nella loro repo originale la eward shaping viene fatta in questo modo.
-
         self.current_shaping_value = RewardShapingValue(
             self.w_p * np.abs(normalized_continuous_position),
             self.w_v * np.abs(normalized_continuous_velocity),

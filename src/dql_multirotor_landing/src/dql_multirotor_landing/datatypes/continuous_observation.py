@@ -1,0 +1,11 @@
+class ContinuousObservation:
+    rel_p_x: float
+    rel_p_y: float
+    rel_p_z: float
+    rel_v_x: float
+    rel_v_y: float
+    rel_v_z: float
+    rel_a_x: float
+    rel_a_y: float
+    rel_a_z: float
+    contact: bool
