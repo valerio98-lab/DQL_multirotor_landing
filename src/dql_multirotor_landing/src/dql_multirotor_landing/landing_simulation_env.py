@@ -115,12 +115,7 @@ class LandingSimulationEnv(gym.Env):
             ObservationRelativeStateMsg,
             self.read_training_continuous_observations,
         )
-        # TODO: Metodo Getter
-        self.observation_drone_state_subscriber = rospy.Subscriber(
-            f"/{self.drone_name}/landing_simulation/world_frame/drone/state",
-            LandingSimulationObjectState,
-            self.read_drone_state,
-        )
+
         # TODO: Da aggiungere al nodo centrale
         self.mp_contact_subscriber = rospy.Subscriber(
             "/moving_platform/contact", ContactsState, self.read_contact_state
@@ -161,7 +156,6 @@ class LandingSimulationEnv(gym.Env):
         # Messages for ros comunication
         self.observation_continuous = ObservationRelativeStateMsg()
         self.observation_continuous_actions = Action()
-        self.observation_drone_state = LandingSimulationObjectState()
 
         # Other variables needed during execution
         self.current_curriculum_step = curriculum_step
@@ -176,11 +170,6 @@ class LandingSimulationEnv(gym.Env):
         if continuous_action_y:
             action.roll = continuous_action_y.roll
         self.action_to_interface_publisher.publish(action)
-
-    # TODO: Valerio deve darmi un setter adeguato :(
-    def read_drone_state(self, msg: LandingSimulationObjectState):
-        """Function reads the current state of the drone whenever triggered by the corresponding subscriber to the corresponding ROS topic."""
-        self.observation_drone_state = msg
 
     def read_training_continuous_observations(self, msg: ObservationRelativeStateMsg):
         """Functions reads the continouos observations of the environment whenever the corresponding subsriber to the corresponding ROS topic is triggered."""

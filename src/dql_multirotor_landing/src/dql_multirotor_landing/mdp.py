@@ -104,12 +104,18 @@ class Mdp:
 
     def discrete_state(
         self,
-        msg_rel_state: ObservationRelativeState,
+        current_continuos_observation: ObservationRelativeState,
     ):
-        self.current_continuos_observation = msg_rel_state
-        continuous_position = np.clip(msg_rel_state.rel_p_x / self.p_max, -1, 1)
-        continuous_velocity = np.clip(msg_rel_state.rel_v_x / self.v_max, -1, 1)
-        continuous_acceleration = np.clip(msg_rel_state.rel_a_x / self.a_max, -1, 1)
+        self.current_continuos_observation = current_continuos_observation
+        continuous_position = np.clip(
+            current_continuos_observation.rel_p_x / self.p_max, -1, 1
+        )
+        continuous_velocity = np.clip(
+            current_continuos_observation.rel_v_x / self.v_max, -1, 1
+        )
+        continuous_acceleration = np.clip(
+            current_continuos_observation.rel_a_x / self.a_max, -1, 1
+        )
 
         latest_valid_curriculum_step = min(
             [
@@ -160,7 +166,9 @@ class Mdp:
             self.limits["acceleration"][latest_valid_curriculum_step],
         )
 
-        discrete_angle = np.argmin(np.abs(self.discrete_angles - msg_rel_state.pitch))
+        discrete_angle = np.argmin(
+            np.abs(self.discrete_angles - current_continuos_observation.pitch)
+        )
         # Store for future use
         self.previous_discrete_state_discrete_state = self.current_discrete_state
         self.current_discrete_state = (
@@ -182,25 +190,23 @@ class Mdp:
         # if the agent has been in been in that curriculum step’s
         # discrete states for at least one second without interruption."
         # With `that` likely referring to the latest curriculum_step
-        # print(self.current_continuos_observation)
-        # print(
-        #     "Goal check: ",  # Time constraint
-        #     self.curriculum_check > self.delta_t,
-        #     # Position constraint
-        #     self.current_discrete_state[1] == 1,
-        #     # Velocity constraint
-        #     self.current_discrete_state[2] == 1,
-        # )
+        if self.previous_discrete_state[0] == self.current_discrete_state[0]:
+            self.curriculum_check += 1
+        else:
+            self.curriculum_check = 0
+        print(f"{self.current_continuos_observation=}")
+        print(
+            "Goal check: ",  # Time constraint
+            f"{self.curriculum_check > self.delta_t=}",
+            f"{self.current_discrete_state[1]=}",
+            f"{self.current_discrete_state[2]=}",
+        )
         # print("Step count: ", self.step_count, self.max_number_of_steps)
         # print(
         #     "Fly zone x: ",
         #     self.current_continuos_observation.rel_p_x < self.flyzone_x[0],
         #     self.current_continuos_observation.rel_p_x > self.flyzone_x[1],
         # )
-        if self.previous_discrete_state[0] == self.current_discrete_state[1]:
-            self.curriculum_check += 1
-        else:
-            self.curriculum_check = 0
         # TODO: REMOVE THIS CHECK
         # Touch contact has priority over everything it's a valid assumption
         if False and self.current_continuos_observation.contact:
@@ -208,7 +214,7 @@ class Mdp:
         # Goal state reached
         elif (
             # Time constraint
-            self.curriculum_check > self.delta_t
+            self.curriculum_check > 22
             # Position constraint
             and self.current_discrete_state[1] == 1
             # Velocity constraint
@@ -367,6 +373,7 @@ class Mdp:
 
     def continuous_action(self, action: int):
         """Updates the setpoints for the attitude controller of the multi-rotor vehicle."""
+
         if self.direction == "x":
             if action == 0:  # Increase
                 self.action_values.pitch = np.min(

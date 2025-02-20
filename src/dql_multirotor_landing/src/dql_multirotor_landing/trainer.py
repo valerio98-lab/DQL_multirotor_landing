@@ -1,6 +1,7 @@
 """Module containing the definition for the trainer."""
 
 from pprint import pprint
+from time import sleep
 
 import gym
 import numpy as np
@@ -125,6 +126,8 @@ class Trainer:
                         print("#" * 80)
                         pprint(info)
                         print("#" * 80)
+                        # sleep(2)
+                        exit()
                         break
             self.__double_q_learning_agent.insert_curriculum_step(
                 current_curriculum_step
