@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from typing import Dict
+
 import numpy as np
 import rospy
 import tf2_ros
@@ -9,7 +11,7 @@ from tf.transformations import quaternion_from_euler
 class MovingPlatform:
     """
     This class models a moving platform that can follow different trajectory modes.
-    
+
     Supported trajectories:
       1. Mono-dimensional sinusoidal trajectory:
          - Motion is defined only along the x-axis (y remains constant).
@@ -18,7 +20,7 @@ class MovingPlatform:
               y(t) = constant (y0)
               u(t) = r_x * ω * cos(ω * t)
               v(t) = 0
-              
+
       2. Figure-eight trajectory (using a lemniscate of Gerono):
          - Motion follows a figure-eight pattern in the xy-plane.
          - Equations:
@@ -26,19 +28,19 @@ class MovingPlatform:
               y(t) = r_y * sin(ω * t) * cos(ω * t) + y0
               u(t) = -r_x * ω * sin(ω * t)
               v(t) = r_y * ω * (cos(ω * t)² - sin(ω * t)²)
-              
+
     Parameters:
       - r_x, r_y: Amplitudes (or effective radii) along the x and y axes (meters)
       - t_x, t_y: Parameters used to compute the angular frequency (ω = t_x / r_x, etc.)
       - t: Time elapsed in the simulation
-      
+
     The trajectory mode is determined by the ROS parameter "trajectory_type".
     """
 
     def __init__(self):
         """
         Initializes the MovingPlatformNode.
-        
+
         Retrieves trajectory parameters from the ROS parameter server, initializes the platform's Pose,
         velocities, and time variables, and sets up a transform broadcaster.
         """
@@ -47,23 +49,28 @@ class MovingPlatform:
         config_path = "central_logic_node"
 
         # Retrieve trajectory parameters from ROS parameters
-        self.trajectory_type = rospy.get_param(f"{config_path}/moving_platform/trajectory_type", "rpm")
-        self.t_x = float(rospy.get_param(f"{config_path}/moving_platform/t_x", "1"))
-        self.frequency = float(rospy.get_param(f"{config_path}/moving_platform/frequency", "100"))
-        self.start_position = rospy.get_param(
-            f"{config_path}/moving_platform/start_position", {'x': 0, 'y': 0, 'z': 0}
+        self.trajectory_type = rospy.get_param(
+            f"{config_path}/moving_platform/trajectory_type", "rpm"
+        )
+        self.t_x = float(rospy.get_param(f"{config_path}/moving_platform/t_x", "1"))  # type: ignore
+        self.frequency = float(
+            rospy.get_param(f"{config_path}/moving_platform/frequency", "100")  # type:ignore
+        )
+        self.start_position: Dict[str, int] = rospy.get_param(
+            f"{config_path}/moving_platform/start_position",
+            {"x": 0, "y": 0, "z": 0},  # type: ignore
         )
         self.start_orientation = rospy.get_param(
-            f"{config_path}/moving_platform/start_orientation", {'phi': 0, 'theta': 0, 'psi': 0}
+            f"{config_path}/moving_platform/start_orientation",
+            {"phi": 0, "theta": 0, "psi": 0},
         )
-        self.r_x = float(rospy.get_param(f"{config_path}/moving_platform/r_x", "2"))
-        self.r_y = float(rospy.get_param(f"{config_path}/moving_platform/r_y", "2"))
-        self.t_y = float(rospy.get_param(f"{config_path}/moving_platform/t_y", "1"))
+        self.r_x = float(rospy.get_param(f"{config_path}/moving_platform/r_x", "2"))  # type:ignore
+        self.r_y = float(rospy.get_param(f"{config_path}/moving_platform/r_y", "2"))  # type:ignore
+        self.t_y = float(rospy.get_param(f"{config_path}/moving_platform/t_y", "1"))  # type:ignore
 
-        self.phi = self.start_orientation.get("phi", 0)
-        self.theta = self.start_orientation.get("theta", 0)
-        self.psi = self.start_orientation.get("psi", 0)
-
+        self.phi: int = self.start_orientation.get("phi", 0)  # type:ignore
+        self.theta: int = self.start_orientation.get("theta", 0)  # type:ignore
+        self.psi: int = self.start_orientation.get("psi", 0)  # type:ignore
 
         self.pose = self._initialize_pose()
 
@@ -88,31 +95,43 @@ class MovingPlatform:
             self.t_x = 0.8
             self.t_y = 0.8
             omega = self.t_x / self.r_x
-            self.pose.position.x = self.r_x * np.cos(omega * self.t) + self.start_position["x"]
-            self.pose.position.y = self.r_y * np.sin(omega * self.t) * np.cos(omega * self.t) + self.start_position["y"]
+            self.pose.position.x = (
+                self.r_x * np.cos(omega * self.t) + self.start_position["x"]
+            )
+            self.pose.position.y = (
+                self.r_y * np.sin(omega * self.t) * np.cos(omega * self.t)
+                + self.start_position["y"]
+            )
 
             self.u = -self.r_x * omega * np.sin(omega * self.t)
-            self.v = self.r_y * omega * (np.cos(omega * self.t)**2 - np.sin(omega * self.t)**2)
+            self.v = (
+                self.r_y
+                * omega
+                * (np.cos(omega * self.t) ** 2 - np.sin(omega * self.t) ** 2)
+            )
         else:
-            ## position and velocity along y is constant to 0 for a mono-dimensional trajectory, 
+            ## position and velocity along y is constant to 0 for a mono-dimensional trajectory,
             # however we keep the implementation along y for a possible future extension
-            
+
             omega = self.t_x / self.r_x
-            omega_y = 0 ## constant to 0 for a mono-dimensional trajectory
-            self.pose.position.x = self.r_x * np.sin(omega * self.t) + self.start_position["x"]
-            self.pose.position.y = self.r_y * np.sin(omega_y * self.t) + self.start_position["y"]
+            omega_y = 0  ## constant to 0 for a mono-dimensional trajectory
+            self.pose.position.x = (
+                self.r_x * np.sin(omega * self.t) + self.start_position["x"]
+            )
+            self.pose.position.y = (
+                self.r_y * np.sin(omega_y * self.t) + self.start_position["y"]
+            )
             self.u = self.r_x * omega * np.cos(omega * self.t)
             self.v = self.r_y * omega_y * np.cos(omega_y * self.t)
 
         self.t += self.delta_t
 
-
     def _initialize_pose(self) -> Pose:
         """
         Initializes and returns the Pose representing the platform's starting state.
-        
+
         Converts the Euler angles (phi, theta, psi) to a quaternion and sets the initial position.
-        
+
         Returns:
             Pose: The initialized Pose of the moving platform.
         """
@@ -126,7 +145,7 @@ class MovingPlatform:
         pose.orientation.z = quat[2]
         pose.orientation.w = quat[3]
         return pose
-    
+
     def reset_time(self):
         """
         Resets the time variable to 0.
@@ -136,13 +155,10 @@ class MovingPlatform:
     def update(self):
         """
         Updates the platform's state by computing the next point in the trajectory.
-        
+
         Returns:
-            tuple: Updated platform state in the format 
+            tuple: Updated platform state in the format
                    (Pose, u, v)
         """
         self.compute_trajectory()
         return self.pose, self.u, self.v
-
-
-    

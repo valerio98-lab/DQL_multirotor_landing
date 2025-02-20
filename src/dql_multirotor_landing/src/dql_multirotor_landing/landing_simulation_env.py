@@ -4,28 +4,21 @@ Script contains the definition of the class defining the training environment an
 Furthermore, it registers the landing scenario as an environment in gym.
 """
 
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
-import gym
+import gym  # type: ignore
 import numpy as np
 import rospy
 from gazebo_msgs.msg import ModelState
 from gazebo_msgs.srv import GetModelState, SetModelState
-from gym.envs.registration import register
+from gym.envs.registration import register  # type: ignore
 from std_msgs.msg import Bool
 from std_srvs.srv import Empty
+from visualization_msgs.msg import Marker
 
 from dql_multirotor_landing.mdp import Mdp
 from dql_multirotor_landing.msg import Action, Observation
-
-# from dql_multirotor_landing.srv import ResetRandomSeed
-from dql_multirotor_landing.utils import get_publisher
-
-# Register the training environment in gym as an available one
-reg = register(
-    id="landing_simulation-v0",
-    entry_point="dql_multirotor_landing.landing_simulation_env:LandingSimulationEnv",
-)
+from dql_multirotor_landing.utils import get_publisher  # type: ignore
 
 
 class LandingSimulationEnv(gym.Env):
@@ -36,13 +29,13 @@ class LandingSimulationEnv(gym.Env):
     # Table 2 specify that the flyzone must be 9x9, since this seemed
     # like the most correct value, as it was backed up by Table 7,
     # so we decided to opt for this.
-    flyzone_x: np.ndarray = np.array([-4.5, 4.5])
+    flyzone_x: Tuple[float, float] = (-4.5, 4.5)
     """Fly zone in the x direction"""
 
-    flyzone_y: np.ndarray = np.array([-4.5, 4.5])
+    flyzone_y: Tuple[float, float] = (-4.5, 4.5)
     """Fly zone in the y direction"""
 
-    flyzone_z: np.ndarray = np.array([0, 9])
+    flyzone_z: Tuple[float, float] = (0, 9)
     """Fly zone in the z direction"""
 
     # Table 2
@@ -63,13 +56,13 @@ class LandingSimulationEnv(gym.Env):
     """This is the height of the platform"""
 
     done_descriptions = [
-        "SUCCESS: Touched platform",
-        "SUCCESS: Goal state reached",
-        "FAILURE: Maximum episode duration",
-        "FAILURE: Reached minimum altitude",
-        "FAILURE: Drone moved too far from platform in x direction",
-        "FAILURE: Drone moved too far from platform in y direction",
-        "FAILURE: Drone moved too far from platform in z direction",
+        "\x1b[1;32mSUCCESS\x1b[0m: Touched platform",
+        "\x1b[1;32mSUCCESS\x1b[0m: Goal state reached",
+        "\x1b[1;31mFAILURE\x1b[0m: Maximum episode duration",
+        "\x1b[1;31mFAILURE\x1b[0m: Reached minimum altitude",
+        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in x direction",
+        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in y direction",
+        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in z direction",
     ]
     t_max: int = 20
 
@@ -105,6 +98,9 @@ class LandingSimulationEnv(gym.Env):
         self.reset_simulation_publisher = get_publisher(
             "training/reset_simulation", Bool, queue_size=0
         )
+        self.marker_publisher = rospy.Publisher(
+            "/gazebo/training_marker", Marker, queue_size=10
+        )
         # Setup subscribers
         self.observation_continuous_subscriber = rospy.Subscriber(
             f"/{self.drone_name}/training_observation_interface/observations",
@@ -138,8 +134,7 @@ class LandingSimulationEnv(gym.Env):
             self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max)
 
         # Messages for ros comunication
-        self.observation_continuous = Observation()
-        self.observation_continuous_actions = Action()
+        self.continuous_observation = Observation()
 
         # Other variables needed during execution
         self.current_curriculum_step = curriculum_step
@@ -175,11 +170,10 @@ class LandingSimulationEnv(gym.Env):
         # Pause simulation and reset Gazebo
         self.pause_sim()
         self.reset_world_gazebo_service()
-
+        moving_platform = self.model_coordinates("moving_platform", "world")
         # Initialize drone state
         init_drone = ModelState()
         init_drone.model_name = self.drone_name
-
         # Section 4.3 Initializazion
         # "we use the following normal distribution to determine the UAV’s
         # initial position within the fly zone during
@@ -202,19 +196,14 @@ class LandingSimulationEnv(gym.Env):
 
         # Clip to stay within fly zone
         init_drone.pose.position.x = np.clip(
-            x_init, self.flyzone_x[0], self.flyzone_x[1]
+            x_init + moving_platform.pose.position.x,
+            self.flyzone_x[0],
+            self.flyzone_x[1],
         )
         init_drone.pose.position.y = np.clip(
-            y_init, self.flyzone_y[0], self.flyzone_y[1]
-        )
-        object_coordinates_moving_platform = self.model_coordinates(
-            "moving_platform", "world"
-        )
-        object_coordinates_drone_after_reset = self.model_coordinates(
-            "hummingbird", "world"
-        )
-        print(
-            f"{object_coordinates_moving_platform=},{object_coordinates_drone_after_reset=}"
+            y_init + moving_platform.pose.position.x,
+            self.flyzone_y[0],
+            self.flyzone_y[1],
         )
         init_drone.pose.position.z = self.z_init
         # Section 3.12:
@@ -226,6 +215,10 @@ class LandingSimulationEnv(gym.Env):
         init_drone.twist.angular.x = 0
         init_drone.twist.angular.y = 0
         init_drone.twist.angular.z = 0
+        init_drone.pose.orientation.x = 0
+        init_drone.pose.orientation.y = 0
+        init_drone.pose.orientation.z = 0
+        init_drone.pose.orientation.w = 1.0
 
         self.set_model_state_service(init_drone)
 
@@ -248,7 +241,7 @@ class LandingSimulationEnv(gym.Env):
             observation_y = self.mdp_y.discrete_state(observation_continuous)
         return observation_x, observation_y
 
-    def step(self, action_x: int, action_y: int = 0):
+    def step(self, action_x: int, action_y: int = 0):  # type: ignore
         """Function performs one timestep of the training."""
 
         # Update the setpoints based on the current action and publish them to the ROS network
@@ -279,9 +272,9 @@ class LandingSimulationEnv(gym.Env):
         done_x = self.mdp_x.check()
 
         info = {}
+        reward = 0
         if len(self.directions) == 1:
             reward = self.mdp_x.reward()
-            info = {"reward": reward}
             self.mdp_x.step_count += 1
             self.cumulative_reward += reward
             if done_x is not None:
@@ -298,3 +291,10 @@ class LandingSimulationEnv(gym.Env):
             done_bool |= (done_y is None) and (done_y == done_x)
 
         return observation_x, observation_y, reward, done_bool, info
+
+
+# Register the training environment in gym as an available one
+register(
+    id="landing_simulation-v0",
+    entry_point="dql_multirotor_landing.landing_simulation_env:LandingSimulationEnv",
+)

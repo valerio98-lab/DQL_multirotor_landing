@@ -18,4 +18,7 @@
         "/opt/ros/noetic/lib/python3/dist-packages"
     ],
     "cmake.sourceDirectory": "/home/haislich/dql_multirotor_landing/src/dql_multirotor_landing",
+    "files.associations": {
+        "random": "cpp"
+    },
 }

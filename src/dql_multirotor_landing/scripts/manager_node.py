@@ -8,14 +8,7 @@ import tf2_ros
 # from dql_multirotor_landing.moving_platform import MovingPlatformNode
 from gazebo_msgs.msg import ContactsState, ModelState, ModelStates
 from gazebo_msgs.srv import SetModelState
-from geometry_msgs.msg import (
-    Pose,
-    PoseStamped,
-    Quaternion,
-    TwistStamped,
-    Vector3,
-    Vector3Stamped,
-)
+from geometry_msgs.msg import PoseStamped, TwistStamped, Vector3, Vector3Stamped
 from mav_msgs.msg import RollPitchYawrateThrust
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, Float64, Float64MultiArray, Header
@@ -26,7 +19,6 @@ from dql_multirotor_landing.filters import KalmanFilter3D
 from dql_multirotor_landing.moving_platform import MovingPlatform
 from dql_multirotor_landing.msg import Action, Observation
 from dql_multirotor_landing.observation_utils import ObservationData, ObservationUtils
-from dql_multirotor_landing.parameters import Parameters
 from dql_multirotor_landing.srv import ResetRandomSeed, ResetRandomSeedResponse
 
 
@@ -46,14 +38,17 @@ class thrust_cmd:
     yaw_state: float
 
 
+DEBUG = True
+
+
 class State:
     def __init__(self):
         self.pose = PoseStamped()
         self.pose.header.frame_id = "world"
         self.twist = TwistStamped()
         self.twist.header.frame_id = "world"
-        self.twist.twist.linear = Vector3Stamped()
-        self.twist.twist.angular = Vector3Stamped()
+        self.twist.twist.linear = Vector3Stamped()  # type: ignore
+        self.twist.twist.angular = Vector3Stamped()  # type: ignore
         self.linear_acceleration = Vector3Stamped()
         self.linear_acceleration.header.frame_id = "world"
 
@@ -79,20 +74,23 @@ class ManagerNode:
 
     def __init__(self):
         rospy.init_node("central_logic_node")
-        self.parameters = Parameters()
         ns = rospy.get_namespace()
         self.node_name = "central_logic_node"
-        self.drone_name = rospy.get_param(
+        self.drone_name: str = rospy.get_param(
             ns + self.node_name + "/drone_name", "hummingbird"
+        )  # type: ignore
+        self.publish_rate: float = float(
+            rospy.get_param(ns + self.node_name + "/publish_rate_hz", "100")  # type: ignore
         )
-        self.publish_rate = float(
-            rospy.get_param(ns + self.node_name + "/publish_rate_hz", "100")
+
+        self.noise_pos_sd: float = float(
+            rospy.get_param(ns + self.node_name + "/noise_pos_sd", "0.25")  # type: ignore
         )
-        self.noise_pos_sd = float(
-            rospy.get_param(ns + self.node_name + "/noise_pos_sd", "0.25")
+        self.noise_vel_sd: float = float(
+            rospy.get_param(ns + self.node_name + "/noise_vel_sd", "0.1")  # type: ignore
         )
-        self.noise_vel_sd = float(
-            rospy.get_param(ns + self.node_name + "/noise_vel_sd", "0.1")
+        self.t_max: int = int(
+            rospy.get_param(ns + self.node_name + "/t_max", "20")  # type: ignore
         )
 
         self.gazebo_frame = "world"
@@ -108,7 +106,7 @@ class ManagerNode:
             world_frame=self.gazebo_frame,
             noise_pos_sd=self.noise_pos_sd,
             noise_vel_sd=self.noise_vel_sd,
-            filter=self.kalman_filter,
+            filter=self.kalman_filter,  # type: ignore
         )
 
         self.drone_wf = State()
@@ -311,10 +309,10 @@ class ManagerNode:
         self.drone_wf.pose = PoseStamped(header=header, pose=msg.pose[drone_index])
         self.mp_wf.pose = PoseStamped(header=header, pose=msg.pose[mp_index])
 
-        self.drone_wf.twist.twist.linear.vector = msg.twist[drone_index].linear
-        self.drone_wf.twist.twist.angular.vector = msg.twist[drone_index].angular
-        self.mp_wf.twist.twist.linear.vector = msg.twist[mp_index].linear
-        self.mp_wf.twist.twist.angular.vector = msg.twist[mp_index].angular
+        self.drone_wf.twist.twist.linear.vector = msg.twist[drone_index].linear  # type: ignore
+        self.drone_wf.twist.twist.angular.vector = msg.twist[drone_index].angular  # type: ignore
+        self.mp_wf.twist.twist.linear.vector = msg.twist[mp_index].linear  # type: ignore
+        self.mp_wf.twist.twist.angular.vector = msg.twist[mp_index].angular  # type: ignore
 
     def _vz_effort_callback(self, msg: Float64):
         self.effort.vz_effort = msg.data
@@ -352,10 +350,10 @@ class ManagerNode:
         if msg.data:
             self.t = np.random.uniform(
                 0,
-                self.parameters.rl_parameters.max_num_timesteps_episode
-                * self.parameters.rl_parameters.running_step_time,
+                self.t_max,
             )
-            self.moving_platform.reset_time(self.t)
+            # TODO: Rimosso, ma vediamo
+            self.moving_platform.reset_time()
             self.observation_data.request_simulation_reset = True
 
             rospy.loginfo("Reset initiated")

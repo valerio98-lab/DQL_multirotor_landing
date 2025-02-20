@@ -31,6 +31,9 @@ class ObservationData:
         self.request_simulation_reset = False
 
 
+DEBUG = False
+
+
 class ObservationUtils:
     """
     Utility class for computing relative states, observation, and managing transformations.
@@ -41,9 +44,9 @@ class ObservationUtils:
         drone_name,
         target_frame,
         world_frame,
-        noise_pos_sd=0,
-        noise_vel_sd=0,
-        filter=Union[KalmanFilter3D, LowPassFilter3D, None],
+        noise_pos_sd=0.0,
+        noise_vel_sd=0.0,
+        filter=Union[KalmanFilter3D, LowPassFilter3D],
     ):
         self.noise_pos_sd = noise_pos_sd
         self.noise_vel_sd = noise_vel_sd
@@ -150,13 +153,12 @@ class ObservationUtils:
                 timestep=timestep,
                 last_vel=self.last_velocity,
                 last_timestep=self.last_timestep,
-            )
+            )  # type: ignore
 
         obs.rel_a_x = accel.vector.x
         obs.rel_a_y = accel.vector.y
         obs.rel_a_z = accel.vector.z
 
-        # TODO
         obs.contact = contact
 
         return obs
@@ -164,10 +166,11 @@ class ObservationUtils:
     def transform_world_to_target_frame(self, drone_wf, mp_wf, drone_tf, mp_tf, buffer):
         try:
             trans = buffer.lookup_transform(
-                self.target_frame, self.world_frame, rospy.Time(0), rospy.Duration(1.0)
+                self.target_frame, self.world_frame, rospy.Time(0), rospy.Duration(1)
             )
         except Exception as e:
-            rospy.logwarn("Unable to lookup transform: " + str(e))
+            if DEBUG:
+                rospy.logwarn("Unable to lookup transform: " + str(e))
             return False, drone_tf, mp_tf
 
         drone_tf.pose = do_transform_pose(drone_wf.pose, trans)
@@ -241,10 +244,10 @@ class ObservationUtils:
         rel_ang_vel = mp_ang_vel - drone_ang_vel
 
         rel_vel.twist.linear.x, rel_vel.twist.linear.y, rel_vel.twist.linear.z = (
-            rel_lin_vel
+            rel_lin_vel  # type: ignore
         )
         rel_vel.twist.angular.x, rel_vel.twist.angular.y, rel_vel.twist.angular.z = (
-            rel_ang_vel
+            rel_ang_vel  # type: ignore
         )
 
         return rel_vel
@@ -263,7 +266,7 @@ class ObservationUtils:
         rel_pos_vals = mp_pos - drone_pos
 
         rel_pos.pose.position.x, rel_pos.pose.position.y, rel_pos.pose.position.z = (
-            rel_pos_vals
+            rel_pos_vals  # type: ignore
         )
 
         return rel_pos

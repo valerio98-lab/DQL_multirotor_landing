@@ -1,8 +1,7 @@
+from pathlib import Path
 from typing import Tuple, Union
 
 import numpy as np
-
-from dql_multirotor_landing import ASSETS_PATH  # type: ignore
 
 CurriculumIdx = int
 PositionIdx = int
@@ -35,41 +34,28 @@ class DoubleQLearningAgent:
         self.Q_table_b = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.state_action_counter = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
 
-    def save(self, curriculum_step: int):
-        with open(
-            ASSETS_PATH / f"curriculum_steps{curriculum_step}" / "Q_table_a.npy",
-            "wb",
-        ) as f:
+    def save(self, save_path: Path):
+        with open(save_path / "Q_table_a.npy", "wb") as f:
             np.save(f, self.Q_table_a)
-        with open(
-            ASSETS_PATH / f"curriculum_steps{curriculum_step}" / "Q_table_a.npy",
-            "wb",
-        ) as f:
+        with open(save_path / "Q_table_a.npy", "wb") as f:
             np.save(f, self.Q_table_b)
-        with open(
-            ASSETS_PATH
-            / f"curriculum_steps{curriculum_step}"
-            / "state_action_counter.npy",
-            "wb",
-        ) as f:
+        with open(save_path / "state_action_counter.npy", "wb") as f:
             np.save(f, self.state_action_counter)
 
-    def load(self, curriculum_step: int):
+    def load(self, save_path: Path):
         try:
             with open(
-                ASSETS_PATH / f"curriculum_steps{curriculum_step}" / "Q_table_a.npy",
+                save_path / "Q_table_a.npy",
                 "rb",
             ) as f:
                 np.load(f, self.Q_table_a)
             with open(
-                ASSETS_PATH / f"curriculum_steps{curriculum_step}" / "Q_table_b.npy",
+                save_path / "Q_table_b.npy",
                 "rb",
             ) as f:
                 np.load(f, self.Q_table_b)
             with open(
-                ASSETS_PATH
-                / f"curriculum_steps{curriculum_step}"
-                / "state_action_counter.npy",
+                save_path / "state_action_counter.npy",
                 "rb",
             ) as f:
                 np.load(f, self.state_action_counter)
@@ -117,7 +103,7 @@ class DoubleQLearningAgent:
         exploration_rate: float,
     ):
         explore = np.random.uniform(0, 1) < exploration_rate
-        return np.where(explore, np.random.randint(3), self.predict(state))
+        return int(np.where(explore, np.random.randint(3), self.predict(state)))
 
     def predict(
         self,

@@ -2,7 +2,6 @@
 Script contains functions that are generally useful to realize the training environment or to perform basic tasks.
 """
 
-import csv
 import os
 import time
 
