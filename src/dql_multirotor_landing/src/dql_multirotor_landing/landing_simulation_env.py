@@ -16,7 +16,7 @@ from std_msgs.msg import Bool
 from std_srvs.srv import Empty
 
 from dql_multirotor_landing.mdp import Mdp
-from dql_multirotor_landing.msg import Action, LandingSimulationObjectState
+from dql_multirotor_landing.msg import Action
 from dql_multirotor_landing.msg import (
     ObservationRelativeState as ObservationRelativeStateMsg,  # type:ignore
 )
@@ -55,7 +55,6 @@ class LandingSimulationEnv(gym.Env):
     delta_t: float = 1 / f_ag
     """Agent response time"""
 
-    t_max: float = 20
     # Section 4.2:
     # "For all trainings we used and initial altitude
     # of the UAV of z_init= 4m"
@@ -74,12 +73,12 @@ class LandingSimulationEnv(gym.Env):
         "FAILURE: Drone moved too far from platform in y direction",
         "FAILURE: Drone moved too far from platform in z direction",
     ]
+    t_max: int = 20
 
     def __init__(
         self,
         directions: List[Literal["x", "y"]] = ["x"],
         curriculum_step: int = 0,
-        t_max: int = 100,
         *,
         initial_seed: Optional[int] = 42,
     ):
@@ -149,9 +148,9 @@ class LandingSimulationEnv(gym.Env):
         np.random.seed(self.initial_seed)
 
         self.directions = directions
-        self.mdp_x = Mdp(curriculum_step)
+        self.mdp_x = Mdp(curriculum_step, self.f_ag, self.t_max)
         if len(directions) == 2:
-            self.mdp_y = Mdp(curriculum_step)
+            self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max)
 
         # Messages for ros comunication
         self.observation_continuous = ObservationRelativeStateMsg()
@@ -183,9 +182,9 @@ class LandingSimulationEnv(gym.Env):
 
     def set_curriculum_step(self, curriculum_step: int):
         self.current_curriculum_step = 0
-        self.mdp_x = Mdp(curriculum_step)
+        self.mdp_x = Mdp(curriculum_step, self.f_ag, self.t_max)
         if len(self.directions) == 2:
-            self.mdp_y = Mdp(curriculum_step)
+            self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max)
 
     def reset(self):
         """Function resets the training environment and updates logging data"""

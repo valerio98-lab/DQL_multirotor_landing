@@ -1,15 +1,10 @@
 """Module containing the definition for the trainer."""
 
-from pprint import pprint
-from time import sleep
-
 import gym
 import numpy as np
 
 from dql_multirotor_landing.double_q_learning import DoubleQLearningAgent, StateAction
-from dql_multirotor_landing.landing_simulation_env import (
-    LandingSimulationEnv,  # noqa: F401
-)
+from dql_multirotor_landing.landing_simulation_env import LandingSimulationEnv
 
 
 class Trainer:
@@ -124,10 +119,9 @@ class Trainer:
                     )
                     if done:
                         print("#" * 80)
-                        pprint(info)
+                        for k, v in info.items():
+                            print(f"{k}: {v}")
                         print("#" * 80)
-                        # sleep(2)
-                        exit()
                         break
             self.__double_q_learning_agent.insert_curriculum_step(
                 current_curriculum_step
