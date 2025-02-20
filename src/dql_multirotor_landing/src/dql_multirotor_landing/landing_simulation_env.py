@@ -9,9 +9,8 @@ import numpy as np
 import rospy
 from gazebo_msgs.msg import ContactsState, ModelState
 from gazebo_msgs.srv import GetModelState, SetModelState
-from geometry_msgs.msg import Vector3
 from gym.envs.registration import register
-from std_msgs.msg import Bool, Float64, Float64MultiArray
+from std_msgs.msg import Bool, Float64
 from std_srvs.srv import Empty
 
 from dql_multirotor_landing.mdp import Mdp
@@ -61,6 +60,7 @@ class LandingSimulationEnv(gym.Env):
         """Class for setting up a gym based training environment that can be used in combination with Gazebo to train an agent to land on a moving platform."""
         # Get parameters
         rospy.init_node("landing_simulation_gym_node")
+        np.random.seed(self.initial_seed)
         self.initial_seed = initial_seed
         self.parameters = Parameters()
         # TODO: Add starting_curriculum_step
@@ -98,12 +98,6 @@ class LandingSimulationEnv(gym.Env):
             "/moving_platform/reset_random_seed", ResetRandomSeed
         )
 
-        # Set the random number seed used for initializing the drone
-        print("Set seed for initial values to ", self.initial_seed)
-        np.random.seed(self.initial_seed)
-        print(
-            "Send signal to reset random number generator to moving platform trajectory generator "
-        )
         self.mp_reset_randon_seed(str(self.initial_seed))
 
         # region: LandingSimulationObject
@@ -126,32 +120,17 @@ class LandingSimulationEnv(gym.Env):
             "/moving_platform/contact", ContactsState, self.read_contact_state
         )
 
-        self.reset_observation = False
         self.observation_continous = ObservationRelativeStateMsg()
         self.observation_continous_actions = Action()
         self.observation_drone_state = LandingSimulationObjectState()
         self.current_cur_step_counter = 0
 
-        # Episode completion variables
-        self.done = 0
-        self.touchdown_on_platform = False
         self.step_number_in_episode = 0
-
-        # Other variables required for execution
-        self.cum_reward = 0
-
         self.done_numeric = 0
         self.max_number_of_steps_in_episode = max_num_timesteps_episode
         self.test_mode_activated = False
         self.mp_contact_occured = True
-        # endregion
 
-        # Other script variables
-        self.test_mode_activated = False
-        self.log_dir_path = None
-        self.date_prefix = None
-
-        print("Done setting up training environment...")
         return
 
     def set_curriculum_step(self, curriculum_step: int):
@@ -164,54 +143,49 @@ class LandingSimulationEnv(gym.Env):
         """Function resets the training environment and updates logging data"""
 
         # Reset the setpoints for the low-level controllers of the copter
-
         self.mdp.reset()
-
         self.publish_action_to_interface()
 
-        # Extract terminal condition that led to reset
-        self.done_numeric = self.done_numeric
-        self.touchdown_on_platform = self.touchdown_on_platform
-
+        # Pause simulation and reset Gazebo
         self.pause_sim()
-
-        # Reset gazebo
         self.reset_world_gazebo_service()
 
-        # Begin computation of new init state of the drone
+        # Initialize drone state
         init_drone = ModelState()
         init_drone.model_name = self.drone_name
 
-        # Determine the init value according to a probability distribution
+        # Determine the initial position based on the probability distribution
         if len(self.parameters.uav_parameters.action_max_values) == 1:
             if self.parameters.simulation_parameters.init_distribution == "uniform":
-                x_vec = [
-                    np.random.uniform(low=self.min_x[0], high=self.min_x[1], size=None),
-                    np.random.uniform(low=self.max_x[0], high=self.max_x[1], size=None),
-                ]
-                y_vec = [
-                    np.random.uniform(low=self.min_y[0], high=self.min_y[1], size=None),
-                    np.random.uniform(low=self.max_y[0], high=self.max_y[1], size=None),
-                ]
-                x_init = np.random.choice(x_vec, 1)
-                y_init = np.random.choice(y_vec, 1)
+                x_init = np.random.choice(
+                    [
+                        np.random.uniform(self.min_x[0], self.min_x[1]),
+                        np.random.uniform(self.max_x[0], self.max_x[1]),
+                    ],
+                    1,
+                )
+
+                y_init = np.random.choice(
+                    [
+                        np.random.uniform(self.min_y[0], self.min_y[1]),
+                        np.random.uniform(self.max_y[0], self.max_y[1]),
+                    ],
+                    1,
+                )
 
             elif self.parameters.simulation_parameters.init_distribution == "normal":
-                # Get parameters specifying the normal distribution
-                init_mu_x = self.parameters.simulation_parameters.init_mu_x
-                init_sigma_x = self.parameters.simulation_parameters.init_sigma_x
-                init_mu_y = self.parameters.simulation_parameters.init_mu_y
-                init_sigma_y = self.parameters.simulation_parameters.init_sigma_y
-
-                # Draw init value from normal distribution
-                x_init = np.random.normal(init_mu_x, init_sigma_x)
-                y_init = np.random.normal(init_mu_y, init_sigma_y)
+                x_init = np.random.normal(
+                    self.parameters.simulation_parameters.init_mu_x,
+                    self.parameters.simulation_parameters.init_sigma_x,
+                )
+                y_init = np.random.normal(
+                    self.parameters.simulation_parameters.init_mu_y,
+                    self.parameters.simulation_parameters.init_sigma_y,
+                )
         else:
-            print("Only 1D case is implemented. Aborting...")
             exit()
 
-        # Compute the init position within the specified fly zone ('absolute') or relative to the moving platform ('relative'). Clip to make sure the drone is not initialized outside the flyzone
-
+        # Clip to stay within fly zone
         init_drone.pose.position.x = np.clip(
             x_init,
             -self.parameters.simulation_parameters.max_abs_p_x,
@@ -223,60 +197,37 @@ class LandingSimulationEnv(gym.Env):
             self.parameters.simulation_parameters.max_abs_p_y,
         )
 
-        # Define the new init state (init velocity is 0)
+        # Set initial altitude and velocity
         init_drone.pose.position.z = self.initial_altitude
-        init_drone.twist.linear.x = 0
-        init_drone.twist.linear.y = 0
-        init_drone.twist.linear.z = 0
-        init_drone.twist.angular.x = 0
-        init_drone.twist.angular.y = 0
-        init_drone.twist.angular.z = 0
+        init_drone.twist.linear.x = init_drone.twist.linear.y = (
+            init_drone.twist.linear.z
+        ) = 0
+        init_drone.twist.angular.x = init_drone.twist.angular.y = (
+            init_drone.twist.angular.z
+        ) = 0
+
         self.set_model_state_service(init_drone)
 
-        # Let simulation run for a short time to collect the new values after the initialization
+        # Let simulation run briefly to update values
         self.unpause_sim()
         rospy.sleep(0.1)
-        object_coordinates_moving_platform_after_reset = self.model_coordinates(
-            "moving_platform", "world"
-        )
-        object_coordinates_drone_after_reset = self.model_coordinates(
-            self.drone_name, "world"
-        )
         self.pause_sim()
 
-        # observation = self.convert_observation_msg(observation_msg)
-        # Normalize and clip the observations
-        # Map the current observation to a discrete state value
-        self.reset_observation = True
-        self.reset_observation = False
+        # Get observations
         observation = self.mdp.discrete_state(self.observation_continous)
 
-        # Execute reward function once to update the time dependent components in the reward function, when a training and not a test is running
+        # Update reward function components if in training mode
         if self.test_mode_activated:
             _ = self.mdp.reward()
 
-        # Update the parameters required to run the simulation
-
-        self.step_number_in_episode = 0
+        # Reset episode counters and logging variables
         self.step_number_in_episode = 0
         self.episode_reward = 0
-        self.cum_reward = 0
         self.done_numeric = 0
         self.reset_happened = True
 
-        # Send reset signal to ROS network -> Manda a Valerio
-        self.send_reset_simulation_signal(True)  # type: ignore
-
+        self.reset_simulation_publisher.publish(Bool(True))
         return observation
-
-    def send_reset_simulation_signal(self, status: Bool):
-        """Function sends out a boolean value indicating that a reset has been comnpleted. This can be used in other nodes that need reset, such as the action to training interface node."""
-        msg_reset = Bool()
-        msg_reset.data = True
-        # TODO: Comunicazione a Valerio
-        self.reset_simulation_publisher.publish(msg_reset)
-        self.mp_contact_occured = False
-        return
 
     # TODO: Chiamata a Valerio
     def publish_action_to_interface(self):
@@ -289,11 +240,6 @@ class LandingSimulationEnv(gym.Env):
 
     def step(self, action):
         """Function performs one timestep of the training."""
-        # Reset values if previous step was the reset step
-        if self.reset_happened:
-            self.touchdown_on_platform = False
-            self.touchdown_on_platform = False
-            self.reset_happened = False
 
         # Update the setpoints based on the current action and publish them to the ROS network
         self.mdp.update_action_values(action)
@@ -310,7 +256,6 @@ class LandingSimulationEnv(gym.Env):
 
         # Update the number of episodes
         self.step_number_in_episode += 1
-        self.step_number_in_episode = self.step_number_in_episode
 
         # Check if terminal condition is reached
         (done, reward) = self.process_termination_and_reward(self.observation_continous)
@@ -418,11 +363,9 @@ class LandingSimulationEnv(gym.Env):
             reward = 0 if self.test_mode_activated else self.mdp.reward()
             return False, reward
 
-        # Print message & compute reward
         reward_weight, message = reward_mapping.get(
             done_numeric, (0, "Unknown termination reason")
         )
-        print(f"END OF EPISODE: {message}")
 
         reward = reward_weight * self.mdp.max_possible_reward_for_one_timestep
         done = self.parameters.simulation_parameters.done_criteria.get(

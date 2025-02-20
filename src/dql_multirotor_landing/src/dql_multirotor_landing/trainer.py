@@ -1,7 +1,5 @@
 """Module containing the definition for the trainer."""
 
-from time import sleep
-
 import gym
 import numpy as np
 
@@ -99,17 +97,6 @@ class Trainer:
         self,
     ):
         env: LandingSimulationEnv = gym.make("landing_simulation-v0")  # type:ignore
-        # TODO: This should be ideally just removed
-        # -----
-        env.reset()
-        env.unpause_sim()
-        sleep(2)
-        env.pause_sim()
-        env.reset()
-        env.unpause_sim()
-        sleep(2)
-        env.pause_sim()
-        # -----
         for current_curriculum_step in range(self.__curriculum_steps):
             self.current_curriculum_step = current_curriculum_step
             for current_episode in range(self.__max_num_episodes):
