@@ -14,9 +14,9 @@ from gazebo_msgs.srv import GetModelState, SetModelState
 from gym.envs.registration import register  # type: ignore
 from std_msgs.msg import Bool
 from std_srvs.srv import Empty
-from visualization_msgs.msg import Marker
+from tf.transformations import euler_from_quaternion
 
-from dql_multirotor_landing.mdp import Mdp
+from dql_multirotor_landing.mdp import ContinuousObservation, Mdp
 from dql_multirotor_landing.msg import Action, Observation
 from dql_multirotor_landing.utils import get_publisher  # type: ignore
 
@@ -52,9 +52,6 @@ class LandingSimulationEnv(gym.Env):
     z_init: float = 4.0
     """Initial altitude for the UAV"""
 
-    minimum_altitude: float = 0.2
-    """This is the height of the platform"""
-
     done_descriptions = [
         "\x1b[1;32mSUCCESS\x1b[0m: Touched platform",
         "\x1b[1;32mSUCCESS\x1b[0m: Goal state reached",
@@ -64,14 +61,14 @@ class LandingSimulationEnv(gym.Env):
         "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in y direction",
         "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in z direction",
     ]
-    t_max: int = 20
+    t_max: int = 40
 
     def __init__(
         self,
         directions: List[Literal["x", "y"]] = ["x"],
-        curriculum_step: int = 0,
+        initial_curriculum_step: int = 0,
         *,
-        initial_seed: Optional[int] = 42,
+        initial_seed: Optional[int] = None,
     ):
         # Validate inputs
         if directions != ["x"] and directions != ["x", "y"]:
@@ -97,9 +94,6 @@ class LandingSimulationEnv(gym.Env):
         )
         self.reset_simulation_publisher = get_publisher(
             "training/reset_simulation", Bool, queue_size=0
-        )
-        self.marker_publisher = rospy.Publisher(
-            "/gazebo/training_marker", Marker, queue_size=10
         )
         # Setup subscribers
         self.observation_continuous_subscriber = rospy.Subscriber(
@@ -129,15 +123,17 @@ class LandingSimulationEnv(gym.Env):
         np.random.seed(self.initial_seed)
 
         self.directions = directions
-        self.mdp_x = Mdp(curriculum_step, self.f_ag, self.t_max)
+        self.mdp_x = Mdp(initial_curriculum_step, self.f_ag, self.t_max)
         if len(directions) == 2:
-            self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max)
+            self.mdp_y = Mdp(
+                initial_curriculum_step, self.f_ag, self.t_max, direction="y"
+            )
 
         # Messages for ros comunication
         self.continuous_observation = Observation()
 
         # Other variables needed during execution
-        self.current_curriculum_step = curriculum_step
+        self.current_curriculum_step = initial_curriculum_step
         self.cumulative_reward = 0
 
     def publish_action_to_interface(
@@ -146,7 +142,9 @@ class LandingSimulationEnv(gym.Env):
         """Function publishes the action values that are currently set to the ROS network."""
         action = continuous_action_x
         if continuous_action_y:
+            # print(f"{continuous_action_y=}")
             action.roll = continuous_action_y.roll
+        # print(f"{action=}")
         self.action_to_interface_publisher.publish(action)
 
     def read_training_continuous_observations(self, msg: Observation):
@@ -157,7 +155,7 @@ class LandingSimulationEnv(gym.Env):
         self.current_curriculum_step = 0
         self.mdp_x = Mdp(curriculum_step, self.f_ag, self.t_max)
         if len(self.directions) == 2:
-            self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max)
+            self.mdp_y = Mdp(curriculum_step, self.f_ag, self.t_max, direction="y")
 
     def reset(self):
         """Function resets the training environment and updates logging data"""
@@ -197,13 +195,13 @@ class LandingSimulationEnv(gym.Env):
         # Clip to stay within fly zone
         init_drone.pose.position.x = np.clip(
             x_init + moving_platform.pose.position.x,
-            self.flyzone_x[0],
-            self.flyzone_x[1],
+            moving_platform.pose.position.x + self.flyzone_x[0],
+            moving_platform.pose.position.x + self.flyzone_x[1],
         )
         init_drone.pose.position.y = np.clip(
-            y_init + moving_platform.pose.position.x,
-            self.flyzone_y[0],
-            self.flyzone_y[1],
+            y_init + moving_platform.pose.position.y,
+            moving_platform.pose.position.y + self.flyzone_y[0],
+            moving_platform.pose.position.y + self.flyzone_y[1],
         )
         init_drone.pose.position.z = self.z_init
         # Section 3.12:
@@ -234,8 +232,23 @@ class LandingSimulationEnv(gym.Env):
         self.pause_sim()
         # Save temporarily the current continuous state to avoid sinchronization issues
         # due to callbacks
-        observation_continuous = self.observation_continuous
-        observation_x = self.mdp_x.discrete_state(observation_continuous)
+        drone = self.model_coordinates("hummingbird", "world")
+        pitch, roll, _ = euler_from_quaternion(
+            quaternion=[
+                drone.pose.orientation.x,
+                drone.pose.orientation.y,
+                drone.pose.orientation.z,
+                drone.pose.orientation.w,
+            ]
+        )
+        abs_v_z = drone.pose.position.z
+        observation = self.observation_continuous
+        observation_continuous = ContinuousObservation(
+            observation, pitch, roll, abs_v_z
+        )
+        observation_x = self.mdp_x.discrete_state(
+            observation_continuous,
+        )
         observation_y = None
         if len(self.directions) == 2:
             observation_y = self.mdp_y.discrete_state(observation_continuous)
@@ -263,7 +276,20 @@ class LandingSimulationEnv(gym.Env):
         self.pause_sim()
 
         # Map the current observation to a discrete state value
-        observation_continuous = self.observation_continuous
+        drone = self.model_coordinates("hummingbird", "world")
+        pitch, roll, _ = euler_from_quaternion(
+            quaternion=[
+                drone.pose.orientation.x,
+                drone.pose.orientation.y,
+                drone.pose.orientation.z,
+                drone.pose.orientation.w,
+            ]
+        )
+        abs_v_z = drone.pose.position.z
+        observation = self.observation_continuous
+        observation_continuous = ContinuousObservation(
+            observation, pitch, roll, abs_v_z
+        )
         observation_x = self.mdp_x.discrete_state(observation_continuous)
         observation_y = None
         if len(self.directions) == 2:
@@ -285,10 +311,17 @@ class LandingSimulationEnv(gym.Env):
                 info["duration"] = self.mdp_x.step_count
 
         done_bool: bool = done_x is not None
-        if len(self.directions) == 2 and not done_bool:
+
+        if len(self.directions) == 2 and done_x is not None:
             done_y = self.mdp_y.check()
+            info["termination_description_x"] = self.done_descriptions[done_x]
+
+            print(done_y)
             # Sanity check
-            done_bool |= (done_y is None) and (done_y == done_x)
+            done_bool |= (done_y is not None) and (done_y == done_x)
+            # If we stay in limits exiting is a false positive
+            if done_x == 1:
+                done_bool = False
 
         return observation_x, observation_y, reward, done_bool, info
 

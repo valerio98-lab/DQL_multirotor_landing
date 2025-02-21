@@ -5,17 +5,14 @@ This script starts a training session.
 # Questo fa schifo, ma ci serve per fare in modo che pylance cooperi e ci dia i suggerimenti corretti
 # Sembra essere necessario solo per gli script.
 
-import time
-
 from dql_multirotor_landing.double_q_learning import DoubleQLearningAgent
 from dql_multirotor_landing.trainer import Trainer
 
 if __name__ == "__main__":
-    # TODO: This should be 4
-    curriculum_steps = 1
+    curriculum_steps = 4
     agent = DoubleQLearningAgent(curriculum_steps)
     trainer = Trainer(agent)
-    time.sleep(2)
+
     if True:
         # Inizializza il training environment,
         # trainer.curriculum_training()

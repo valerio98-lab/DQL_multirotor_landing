@@ -11,7 +11,7 @@ source devel/setup.bash
 
 # Launch landing simulation in the background
 echo "Starting landing simulation..."
-exec roslaunch dql_multirotor_landing landing_simulation.launch 
+roslaunch dql_multirotor_landing landing_simulation.launch & >/dev/null 2>&1
 
 # Wait a bit to ensure landing simulation is initialized
 sleep 5

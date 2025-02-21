@@ -25,7 +25,7 @@ class Trainer:
 
     def __init__(
         self,
-        double_q_learning_agent: DoubleQLearningAgent = DoubleQLearningAgent(4),
+        double_q_learning_agent: DoubleQLearningAgent = DoubleQLearningAgent(5),
         number_of_successful_episodes: int = 100,
         training_successful_fraction: float = 0.96,
         max_num_episodes: int = 50000,
@@ -91,16 +91,16 @@ class Trainer:
         self,
     ) -> None:
         """Saves the trainer object to a file using pickle."""
-        save_dir: Path = ASSETS_PATH / f"curriculum_step{self.working_curriculum_step}"
+        save_dir: Path = ASSETS_PATH
         if not save_dir.exists():
             save_dir.mkdir(parents=True, exist_ok=True)
         with open(save_dir / "tainer.pickle", "wb") as f:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(curriculum_steps: int) -> "Trainer":
+    def load() -> "Trainer":
         """Loads a trainer object from a pickle file."""
-        save_dir = ASSETS_PATH / f"curriculum_step{curriculum_steps}"
+        save_dir = ASSETS_PATH
         with open(save_dir / "tainer.pickle", "rb") as f:
             return pickle.load(f)
 
@@ -109,11 +109,10 @@ class Trainer:
         # Clear screen and return to the left corner
         print("\x1b[0;0f", end="")
         print("\x1b[J", end="")
-        for i in range(10):
-            for k, v in info.items():
-                print(f"{k}: {v}")
-            print("\x1b[0;0f", end="")
-            print("\x1b[J", end="")
+        for k, v in info.items():
+            print(f"{k}: {v}")
+        print("\x1b[0;0f", end="")
+        print("\x1b[J", end="")
         # Prepare for next print
         print("\x1b[0;0f", end="")
         print("\x1b[J", end="")
@@ -127,7 +126,7 @@ class Trainer:
             self.working_curriculum_step = self.working_curriculum_step
             for current_episode in range(self._max_num_episodes):
                 self._current_episode = current_episode
-                current_state, _ = env.reset()
+                current_state, _current_state_y = env.reset()
                 for _ in range(400):
                     action = self._double_q_learning_agent.guess(
                         current_state,
@@ -136,7 +135,6 @@ class Trainer:
                         ),
                     )
                     next_state, _next_state_y, reward, done, info = env.step(action)
-                    # print(f"{reward=},{done=},{info=}")
                     current_state_action = current_state + (action,)
                     self._double_q_learning_agent.state_action_counter[
                         current_state_action
@@ -153,9 +151,11 @@ class Trainer:
                         info["remaining_episodes"] = (
                             self._max_num_episodes - current_episode
                         )
+                        # TODO add success rate
                         self.log(info)
                         self.save()
                         break
+                    current_state = next_state
             self._double_q_learning_agent.insert_curriculum_step(
                 self.working_curriculum_step
             )

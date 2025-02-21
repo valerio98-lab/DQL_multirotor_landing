@@ -21,7 +21,7 @@
 	<arg name="enable_mavlink_interface" default="false" />
 	<arg name="log_file" default="$(arg mav_name)_$(arg drone_name)" />
 	<arg name="wait_to_record_bag" default="false" />
-	<arg name="verbose" default="true" />
+	<arg name="verbose" default="false" />
 	<arg name="X" default="0.0" />
 	<arg name="Y" default="0.0" />
 	<arg name="Z" default="2.0" />

@@ -7,6 +7,14 @@ from dql_multirotor_landing.msg import Action, Observation
 
 
 @dataclass
+class ContinuousObservation:
+    observation: Observation = field(default_factory=lambda: Observation())
+    pitch: float = field(default_factory=lambda: 0)
+    roll: float = field(default_factory=lambda: 0)
+    abs_p_z: float = field(default_factory=lambda: 0)
+
+
+@dataclass
 class RewardShapingValue:
     position: float = field(default_factory=lambda: 0)
     velocity: float = field(default_factory=lambda: 0)
@@ -67,6 +75,8 @@ class Mdp:
         # a vertical velocity of v_z = -0.1m/s"
         -0.1,
     )
+    minimum_altitude: float = 0.2
+    """This is the height of the platform"""
 
     def __init__(
         self,
@@ -78,8 +88,8 @@ class Mdp:
         flyzone_z: Tuple[float, float] = (0, 9),
         direction: Literal["x", "y"] = "x",
     ) -> None:
-        if working_curriculum_step > 4:
-            raise ValueError("For now only 4 working curriculum steps are available")
+        if working_curriculum_step > 5:
+            raise ValueError("For now only 5 working curriculum steps are available")
         self.working_curriculum_step = working_curriculum_step
         self.f_ag = f_ag
         self.t_max = t_max
@@ -92,17 +102,14 @@ class Mdp:
         self.delta_t = 1 / f_ag
         self.current_discrete_state: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
         self.previous_discrete_state: Tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
-        self.current_continuous_observation = Observation()
+        self.current_continuous_observation = ContinuousObservation()
         self.limits = Limits(working_curriculum_step)
         self.current_shaping_value = RewardShapingValue()
         self.previous_shaping_value = RewardShapingValue()
         """Stores the current shaping value for each curriculum timestep"""
-        self.done = 0
+        self.done = None
         self.curriculum_check = 0
         self.step_count = 0
-
-    def set_curriculum_step(self, curriculum_step: int):
-        self.limits = Limits(curriculum_step)
 
     def _latest_valid_curriculum_step_for_state(
         self,
@@ -111,9 +118,10 @@ class Mdp:
     ):
         for idx in range(1, len(state_limits)):
             limit = state_limits[idx]
-            if not (-limit <= value <= limit):
-                return idx
-        return 0
+            if value < -limit or value > limit:
+                return idx - 1
+        # print(state_limits, len(state_limits))
+        return len(state_limits) - 1
 
     def _discretiazion_function(
         self, continuous_value: float, goal: float, limit: float
@@ -122,22 +130,25 @@ class Mdp:
             return 0
         elif -goal <= continuous_value <= goal:
             return 1
-        else:
+        elif continuous_value <= limit:
             return 2
+        else:
+            raise ValueError(f"Unexpected discretization case: {continuous_value}")
 
     def discrete_state(
         self,
-        current_continuous_observation: Observation,
+        current_continuous_observation: ContinuousObservation,
+        # current_drone_orientation:[]
     ):
         self.current_continuous_observation = current_continuous_observation
         continuous_position = np.clip(
-            current_continuous_observation.rel_p_x / self.p_max, -1, 1
+            current_continuous_observation.observation.rel_p_x / self.p_max, -1, 1
         )
         continuous_velocity = np.clip(
-            current_continuous_observation.rel_v_x / self.v_max, -1, 1
+            current_continuous_observation.observation.rel_v_x / self.v_max, -1, 1
         )
         continuous_acceleration = np.clip(
-            current_continuous_observation.rel_a_x / self.a_max, -1, 1
+            current_continuous_observation.observation.rel_a_x / self.a_max, -1, 1
         )
 
         latest_valid_curriculum_step = min(
@@ -183,18 +194,25 @@ class Mdp:
         discrete_acceleration = self._discretiazion_function(
             continuous_acceleration,
             self.limits.acceleration[latest_valid_curriculum_step]
-            * continuous_acceleration,
+            * velocity_contraction,
             self.limits.acceleration[latest_valid_curriculum_step],
         )
         if self.direction == "x":
-            discrete_angle = np.argmin(
-                np.abs(self.discrete_angles - self.action_values.pitch)
+            clipped_pitch = np.clip(
+                self.action_values.pitch, -self.theta_max, self.theta_max
             )
-        # TODO: remove false
-        elif False and self.direction == "y":
-            discrete_angle = np.argmin(
-                np.abs(self.discrete_angles - current_continuous_observation.roll)
+            discrete_angle = np.argmin(np.abs(self.discrete_angles - clipped_pitch))
+            # discrete_angle = np.argmin(
+            #     np.abs(self.discrete_angles - self.action_values.pitch)
+            # )
+        elif self.direction == "y":
+            clipped_roll = np.clip(
+                self.action_values.roll, -self.theta_max, self.theta_max
             )
+            discrete_angle = np.argmin(np.abs(self.discrete_angles - clipped_roll))
+            # discrete_angle = np.argmin(
+            #     np.abs(self.discrete_angles - self.action_values.roll)
+            # )
         else:
             raise ValueError(f"Direction {self.direction} is not a valid direction")
 
@@ -219,42 +237,69 @@ class Mdp:
         # if the agent has been in been in that curriculum step’s
         # discrete states for at least one second without interruption."
         # With `that` likely referring to the latest curriculum_step
-        if self.previous_discrete_state[0] == self.current_discrete_state[0]:
+        if (
+            self.previous_discrete_state[0] == self.current_discrete_state[0]
+            and self.previous_discrete_state[1] == self.current_discrete_state[1]
+            and self.previous_discrete_state[2] == self.current_discrete_state[2]
+        ):
             self.curriculum_check += 1
         else:
             self.curriculum_check = 0
-
-        # TODO: REMOVE THIS CHECK
         # Touch contact has priority over everything it's a valid assumption
-        if False and self.current_continuous_observation.contact:
+        if self.current_continuous_observation.observation.contact:
             self.done = 0
         # Goal state reached
         elif (
             # Time constraint
-            self.curriculum_check > self.f_ag
+            self.curriculum_check >= self.f_ag
             # Position constraint
             and self.current_discrete_state[1] == 1
             # Velocity constraint
             and self.current_discrete_state[2] == 1
         ):
+            print(f"{self.curriculum_check > self.f_ag=}")
+            print(f"{self.current_discrete_state[1]=}")
+            print(f"{self.current_discrete_state[2]=}")
             self.done = 1
         # Maximum episode duration
-        elif self.step_count > self.t_max * self.f_ag:
+        elif self.step_count > (self.t_max * self.f_ag):
+            print(f"{self.step_count=}, {self.t_max}, {self.f_ag}")
             self.done = 2
-        # Reached minimum alitude
-        # elif self.current_continuous_observation.rel_p_z > 0.1:
-        #     self.done = 3
+        # # Reached minimum alitude
+        elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
+            print(f"{self.current_continuous_observation.abs_p_z=}")
+            print(f"{self.minimum_altitude=}")
+            self.done = 3
         elif (
-            self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
-            or self.current_continuous_observation.rel_p_x > self.flyzone_x[1]
+            self.current_continuous_observation.observation.rel_p_x < self.flyzone_x[0]
+            or self.current_continuous_observation.observation.rel_p_x
+            > self.flyzone_x[1]
         ):
+            print(
+                f"{self.current_continuous_observation.observation.rel_p_x=},{self.flyzone_x[0]=}"
+            )
+            print(
+                f"{self.current_continuous_observation.observation.rel_p_x=},{self.flyzone_x[1]=}"
+            )
             self.done = 4
         elif (
-            self.current_continuous_observation.rel_p_y < self.flyzone_y[0]
-            or self.current_continuous_observation.rel_p_y > self.flyzone_y[1]
+            self.current_continuous_observation.observation.rel_p_y < self.flyzone_y[0]
+            or self.current_continuous_observation.observation.rel_p_y
+            > self.flyzone_y[1]
         ):
+            print(
+                f"{self.current_continuous_observation.observation.rel_p_y=},{self.flyzone_y[0]=}"
+            )
+            print(
+                f"{self.current_continuous_observation.observation.rel_p_y=},{self.flyzone_y[1]=}"
+            )
             self.done = 5
-        elif self.current_continuous_observation.rel_p_z > self.flyzone_z[1]:
+        elif (
+            self.current_continuous_observation.observation.rel_p_z > self.flyzone_z[1]
+        ):
+            print(
+                f"{self.current_continuous_observation.observation.rel_p_x=},{self.flyzone_z[1]=}"
+            )
             self.done = 6
         # Reached minimum alitude
         else:
@@ -262,8 +307,8 @@ class Mdp:
         return self.done
 
     def reward(self):
-        continuous_position = self.current_continuous_observation.rel_p_x
-        continuous_velocity = self.current_continuous_observation.rel_v_x
+        continuous_position = self.current_continuous_observation.observation.rel_p_x
+        continuous_velocity = self.current_continuous_observation.observation.rel_v_x
 
         # Normalize
         normalized_continuous_position = np.clip(
@@ -351,11 +396,10 @@ class Mdp:
             r_term = r_succ
         elif current_working_curriculum_step > previous_working_curriculum_step:
             r_term = r_fail
-        elif self.done is not None:
-            # TODO: aggiornae
+        elif self.done:
             if self.done == 1:
                 r_term = r_succ
-            elif self.done == 2 or self.done == 3 or self.done == 4:
+            else:
                 r_term = r_fail
         # Update curiculum shaping terms
 
@@ -385,16 +429,16 @@ class Mdp:
         # If action == 2 (do nothing)
         elif self.direction == "y":
             if action == 0:  # Increase
-                self.action_values.pitch = np.min(
+                self.action_values.roll = np.min(
                     (
-                        self.action_values.pitch + self.delta_theta,
+                        self.action_values.roll + self.delta_theta,
                         self.theta_max,
                     )
                 )
             elif action == 1:  # Decrease
-                self.action_values.pitch = np.max(
+                self.action_values.roll = np.max(
                     (
-                        self.action_values.pitch - self.delta_theta,
+                        self.action_values.roll - self.delta_theta,
                         -self.theta_max,
                     )
                 )
@@ -412,6 +456,7 @@ class Mdp:
         # TODO: For now we pass the currnt limits, this might change in the future
         self.current_shaping_value = RewardShapingValue()
         self.previous_shaping_value = RewardShapingValue()
-        self.done = 0
+        self.done = None
         self.curriculum_check = 0
         self.step_count = 0
+        self.current_continuous_observation = ContinuousObservation()

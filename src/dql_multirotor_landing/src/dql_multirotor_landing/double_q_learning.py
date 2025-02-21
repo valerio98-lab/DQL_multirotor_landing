@@ -3,6 +3,8 @@ from typing import Tuple, Union
 
 import numpy as np
 
+from dql_multirotor_landing import ASSETS_PATH  # type: ignore
+
 CurriculumIdx = int
 PositionIdx = int
 VelocityIdx = int
@@ -28,39 +30,56 @@ StateAction = Tuple[
 
 
 class DoubleQLearningAgent:
-    def __init__(self, curriculum_steps: int = 1) -> None:
+    def __init__(self, curriculum_steps: int = 5) -> None:
         self.curriculum_steps = curriculum_steps
         self.Q_table_a = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.Q_table_b = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.state_action_counter = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
 
     def save(self, save_path: Path):
-        with open(save_path / "Q_table_a.npy", "wb") as f:
-            np.save(f, self.Q_table_a)
-        with open(save_path / "Q_table_a.npy", "wb") as f:
-            np.save(f, self.Q_table_b)
-        with open(save_path / "state_action_counter.npy", "wb") as f:
-            np.save(f, self.state_action_counter)
+        # Avoid file ovewrite
+        qa_path = save_path / "Q_table_a.npy"
+        qb_path = save_path / "Q_table_a.npy"
+        sac_path = save_path / "state_action_count.npy"
+        warn = "Found:\n"
+        check = True
+        if qa_path.exists():
+            warn += str(qa_path) + "\n"
+        if qb_path.exists():
+            warn += str(qb_path) + "\n"
+        if sac_path.exists():
+            warn += str(sac_path) + "\n"
+        if warn != "Found:\n":
+            check = (
+                input(warn + "type [y] to overwrite or anything else to abort") == "y"
+            )
+        if check:
+            with open(qa_path, "wb") as f:
+                np.save(f, self.Q_table_a)
+            with open(qb_path, "wb") as f:
+                np.save(f, self.Q_table_b)
+            with open(sac_path, "wb") as f:
+                np.save(f, self.state_action_counter)
 
-    def load(self, save_path: Path):
-        try:
-            with open(
-                save_path / "Q_table_a.npy",
-                "rb",
-            ) as f:
-                np.load(f, self.Q_table_a)
-            with open(
-                save_path / "Q_table_b.npy",
-                "rb",
-            ) as f:
-                np.load(f, self.Q_table_b)
-            with open(
-                save_path / "state_action_counter.npy",
-                "rb",
-            ) as f:
-                np.load(f, self.state_action_counter)
-        except FileNotFoundError:
-            print("The requested load file were not found.")
+    @staticmethod
+    def load(save_path: Path = ASSETS_PATH):
+        # Allow to fail gracefully
+        with open(save_path / "Q_table_a.npy", "rb") as f:
+            qa = np.load(f)
+        with open(save_path / "Q_table_b.npy", "rb") as f:
+            qb = np.load(f)
+        with open(save_path / "state_action_count.npy", "rb") as f:
+            sac = np.load(f)
+        if qa.shape != qb.shape != sac.shape:
+            raise ValueError(
+                f"The shapes of Q table a {qa.shape}, Q table b {qb.shape}"
+                + f"and State action count {sac.shape} cannot be different"
+            )
+        agent = DoubleQLearningAgent(len(qa))
+        agent.Q_table_a = qa
+        agent.Q_table_b = qb
+        agent.state_action_counter = sac
+        return agent
 
     def insert_curriculum_step(self, curriculum_step: int):
         self.Q_table_a = np.insert(self.Q_table_a, curriculum_step, 0.0, 0)
