@@ -228,7 +228,7 @@ class LandingSimulationEnv(gym.Env):
         self.reset_simulation_publisher.publish(Bool(True))
         # Let simulation update values
         self.unpause_sim()
-        rospy.sleep(0.3)
+        rospy.sleep(self.delta_t)
         self.pause_sim()
         # Save temporarily the current continuous state to avoid sinchronization issues
         # due to callbacks

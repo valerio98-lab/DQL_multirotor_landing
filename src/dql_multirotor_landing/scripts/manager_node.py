@@ -358,6 +358,7 @@ class ManagerNode:
             rospy.loginfo("Reset initiated")
             self.pid_setpoints = PID_Setpoints(0, 0, 0, 0)
             rospy.loginfo("New action values: %s", self.pid_setpoints)
+            self.mp_contact_occured = False
 
     def _action_callback(self, msg: Action):
         """

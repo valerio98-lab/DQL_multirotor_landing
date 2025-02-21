@@ -35,25 +35,25 @@ class DoubleQLearningAgent:
         self.Q_table_a = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.Q_table_b = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.state_action_counter = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
+        self.check = True
 
     def save(self, save_path: Path):
         # Avoid file ovewrite
         qa_path = save_path / "Q_table_a.npy"
-        qb_path = save_path / "Q_table_a.npy"
+        qb_path = save_path / "Q_table_b.npy"
         sac_path = save_path / "state_action_count.npy"
-        warn = "Found:\n"
-        check = True
-        if qa_path.exists():
-            warn += str(qa_path) + "\n"
-        if qb_path.exists():
-            warn += str(qb_path) + "\n"
-        if sac_path.exists():
-            warn += str(sac_path) + "\n"
-        if warn != "Found:\n":
-            check = (
-                input(warn + "type [y] to overwrite or anything else to abort") == "y"
-            )
-        if check:
+        # warn = "Found:\n"
+        # if qa_path.exists():
+        #     warn += str(qa_path) + "\n"
+        # if qb_path.exists():
+        #     warn += str(qb_path) + "\n"
+        # if sac_path.exists():
+        #     warn += str(sac_path) + "\n"
+        # if warn != "Found:\n":
+        #     self.check = (
+        #         input(warn + "type [y] to overwrite or anything else to abort") == "y"
+        # )
+        if self.check:
             with open(qa_path, "wb") as f:
                 np.save(f, self.Q_table_a)
             with open(qb_path, "wb") as f:

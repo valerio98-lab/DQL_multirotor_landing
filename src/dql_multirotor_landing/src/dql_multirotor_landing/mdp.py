@@ -237,11 +237,7 @@ class Mdp:
         # if the agent has been in been in that curriculum step’s
         # discrete states for at least one second without interruption."
         # With `that` likely referring to the latest curriculum_step
-        if (
-            self.previous_discrete_state[0] == self.current_discrete_state[0]
-            and self.previous_discrete_state[1] == self.current_discrete_state[1]
-            and self.previous_discrete_state[2] == self.current_discrete_state[2]
-        ):
+        if self.previous_discrete_state[0] == self.current_discrete_state[0]:
             self.curriculum_check += 1
         else:
             self.curriculum_check = 0

@@ -2,7 +2,7 @@
 
 import pickle
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import gym
 import numpy as np
@@ -25,7 +25,8 @@ class Trainer:
 
     def __init__(
         self,
-        double_q_learning_agent: DoubleQLearningAgent = DoubleQLearningAgent(5),
+        curriculum_steps: int = 5,
+        double_q_learning_agent: Optional[DoubleQLearningAgent] = None,
         number_of_successful_episodes: int = 100,
         training_successful_fraction: float = 0.96,
         max_num_episodes: int = 50000,
@@ -34,8 +35,10 @@ class Trainer:
         seed: int = 42,
     ) -> None:
         np.random.seed(seed)
-        self._double_q_learning_agent = double_q_learning_agent
-        self._curriculum_steps = self._double_q_learning_agent.curriculum_steps
+        if not double_q_learning_agent:
+            double_q_learning_agent = DoubleQLearningAgent()
+        self.double_q_learning_agent = double_q_learning_agent
+        self._curriculum_steps = self.double_q_learning_agent.curriculum_steps
 
         self._number_of_successful_episodes = number_of_successful_episodes
         self._training_successful_fraction = training_successful_fraction
@@ -48,7 +51,7 @@ class Trainer:
         self._alpha = self._alpha_min
 
     def alpha(self, current_state_action: StateAction):
-        counter = self._double_q_learning_agent.state_action_counter[
+        counter = self.double_q_learning_agent.state_action_counter[
             current_state_action
         ]
         self._alpha = float(
@@ -91,18 +94,22 @@ class Trainer:
         self,
     ) -> None:
         """Saves the trainer object to a file using pickle."""
-        save_dir: Path = ASSETS_PATH
-        if not save_dir.exists():
-            save_dir.mkdir(parents=True, exist_ok=True)
-        with open(save_dir / "tainer.pickle", "wb") as f:
+        save_path: Path = ASSETS_PATH
+        if not save_path.exists():
+            save_path.mkdir(parents=True, exist_ok=True)
+        with open(save_path / "tainer.pickle", "wb") as f:
             pickle.dump(self, f)
+        self.double_q_learning_agent.save(save_path)
 
     @staticmethod
-    def load() -> "Trainer":
+    def load(curriculum_steps: int = 5) -> "Trainer":
         """Loads a trainer object from a pickle file."""
-        save_dir = ASSETS_PATH
-        with open(save_dir / "tainer.pickle", "rb") as f:
-            return pickle.load(f)
+        save_path = ASSETS_PATH
+        with open(save_path / "tainer.pickle", "rb") as f:
+            trainer = pickle.load(f)
+        agent = DoubleQLearningAgent.load(save_path)
+        trainer.double_q_learning_agent = agent
+        return trainer
 
     def log(self, info: Dict[str, Any]):
         # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
@@ -128,7 +135,7 @@ class Trainer:
                 self._current_episode = current_episode
                 current_state, _current_state_y = env.reset()
                 for _ in range(400):
-                    action = self._double_q_learning_agent.guess(
+                    action = self.double_q_learning_agent.guess(
                         current_state,
                         self.exploration_rate(
                             current_episode, self.working_curriculum_step
@@ -136,10 +143,10 @@ class Trainer:
                     )
                     next_state, _next_state_y, reward, done, info = env.step(action)
                     current_state_action = current_state + (action,)
-                    self._double_q_learning_agent.state_action_counter[
+                    self.double_q_learning_agent.state_action_counter[
                         current_state_action
                     ] += 1
-                    self._double_q_learning_agent.update(
+                    self.double_q_learning_agent.update(
                         current_state_action,
                         next_state,
                         self.alpha(current_state_action),
@@ -152,14 +159,15 @@ class Trainer:
                             self._max_num_episodes - current_episode
                         )
                         # TODO add success rate
-                        self.log(info)
+                        # self.log(info)
+                        print(info)
                         self.save()
                         break
                     current_state = next_state
-            self._double_q_learning_agent.insert_curriculum_step(
+            self.double_q_learning_agent.insert_curriculum_step(
                 self.working_curriculum_step
             )
-            self._double_q_learning_agent.transfer_learning(
+            self.double_q_learning_agent.transfer_learning(
                 self.working_curriculum_step,
                 self.transfer_learning_ratio(
                     self.working_curriculum_step,
