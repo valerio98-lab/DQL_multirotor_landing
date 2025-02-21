@@ -146,11 +146,11 @@ class MovingPlatform:
         pose.orientation.w = quat[3]
         return pose
 
-    def reset_time(self):
+    def reset_time(self, t: float = 0.0):
         """
         Resets the time variable to 0.
         """
-        self.t = 0.0
+        self.t = t
 
     def update(self):
         """

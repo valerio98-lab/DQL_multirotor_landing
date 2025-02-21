@@ -11,7 +11,6 @@
 	<arg name="drone_name" default="$(arg mav_name)" />
 	<arg name="roboID" default="0" />
 	<!-- Parametri per il drone (ulteriori argomenti) -->
-	<arg name="is_input_joystick" default="false" />
 	<arg name="enable_meshes" default="true" />
 	<arg name="enable_wind" default="true" />
 	<arg name="enable_physics" default="true" />
@@ -22,10 +21,7 @@
 	<arg name="log_file" default="$(arg mav_name)_$(arg drone_name)" />
 	<arg name="wait_to_record_bag" default="false" />
 	<arg name="verbose" default="true" />
-	<arg name="X" default="0.0" />
-	<arg name="Y" default="0.0" />
-	<arg name="Z" default="2.0" />
-	<param name="use_sim_time" value="true" />
+
 	<arg name="ros_port" default="11311" />
 	<arg name="gaz_port" default="11351" />
 	<arg name="ros_ip" default="localhost" />
@@ -55,7 +51,6 @@
 			<arg name="mav_name" value="$(arg mav_name)" />
 			<arg name="drone_name" value="$(arg drone_name)" />
 			<arg name="roboID" value="$(arg roboID)" />
-			<arg name="is_input_joystick" value="$(arg is_input_joystick)" />
 			<arg name="enable_meshes" value="$(arg enable_meshes)" />
 			<arg name="enable_wind" value="$(arg enable_wind)" />
 			<arg name="enable_physics" value="$(arg enable_physics)" />
