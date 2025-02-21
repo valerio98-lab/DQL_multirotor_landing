@@ -352,8 +352,7 @@ class ManagerNode:
                 0,
                 self.t_max,
             )
-            # TODO: Rimosso, ma vediamo
-            self.moving_platform.reset_time()
+            self.moving_platform.reset_time(self.t)
             self.observation_data.request_simulation_reset = True
 
             rospy.loginfo("Reset initiated")
