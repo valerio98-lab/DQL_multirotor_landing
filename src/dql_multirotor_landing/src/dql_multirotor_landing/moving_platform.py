@@ -150,7 +150,8 @@ class MovingPlatform:
         """
         Resets the time variable to 0.
         """
-        self.t = t
+        # self.t = t
+        ...
 
     def update(self):
         """

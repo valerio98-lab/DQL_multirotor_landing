@@ -10,7 +10,10 @@ agent_y = DoubleQLearningAgent.load()
 
 
 env: LandingSimulationEnv = gym.make(
-    "landing_simulation-v0", directions=["x", "y"], curriculum_step=4
+    "landing_simulation-v0",
+    two_dimensional=True,
+    # Zero indexed, curriculum step 5
+    initial_curriculum_step=4,
 )  # type:ignore
 
 
@@ -36,11 +39,12 @@ for current_episode in range(500):
     for _ in range(400):
         action_x = agent_x.predict(current_state_x)
         action_y = agent_y.predict(current_state_y)  # type: ignore
-        next_state_x, next_state_y, _, done, info = env.step(action_x, action_y)
+        print(action_x, action_y)
+        next_state_x, next_state_y, _, done, info = env.step(action_x)
 
         if done:
             info["current_episode"] = current_episode
-            info["remaining_episodes"] = 500 - current_episode
+            info["remaining_episodes"] = 400 - current_episode
             print(info)
             break
         current_state_x = next_state_x

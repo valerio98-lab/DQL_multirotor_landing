@@ -9,7 +9,7 @@ import numpy as np
 
 from dql_multirotor_landing import ASSETS_PATH  # type: ignore
 from dql_multirotor_landing.double_q_learning import DoubleQLearningAgent, StateAction
-from dql_multirotor_landing.landing_simulation_env import LandingSimulationEnv
+from dql_multirotor_landing.landing_simulation_env import TrainingLandingEnv
 
 
 class Trainer:
@@ -22,6 +22,12 @@ class Trainer:
         0.8257273369742982,
         0.8311571820651724,
     ]
+    # Section 4.5 training:
+    # The training is ended as as soon as the agent manages
+    # to reach the goal state, associated with the latest
+    # step in the sequential curriculum in 96% of the last 100 episodes.
+    _success_rate = 0.96
+    _t_max = 20  # seconds
 
     def __init__(
         self,
@@ -82,7 +88,7 @@ class Trainer:
     def transfer_learning_ratio(self, curriculum_step: int) -> float:
         if curriculum_step < 1:
             return 1.0
-        # For the first 4 curiculum steps the value is known, taken from the paper
+        # For the first 5 curiculum steps the value is known, taken from the paper
         elif curriculum_step < len(self._scale_modification_value):
             return self._scale_modification_value[curriculum_step]
         # In any other case `Eq. 31` is applied
@@ -102,7 +108,7 @@ class Trainer:
         self.double_q_learning_agent.save(save_path)
 
     @staticmethod
-    def load(curriculum_steps: int = 5) -> "Trainer":
+    def load() -> "Trainer":
         """Loads a trainer object from a pickle file."""
         save_path = ASSETS_PATH
         with open(save_path / "tainer.pickle", "rb") as f:
@@ -111,37 +117,25 @@ class Trainer:
         trainer.double_q_learning_agent = agent
         return trainer
 
-    def log(self, info: Dict[str, Any]):
-        # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
-        # Clear screen and return to the left corner
-        print("\x1b[0;0f", end="")
-        print("\x1b[J", end="")
-        for k, v in info.items():
-            print(f"{k}: {v}")
-        print("\x1b[0;0f", end="")
-        print("\x1b[J", end="")
-        # Prepare for next print
-        print("\x1b[0;0f", end="")
-        print("\x1b[J", end="")
-        print("\x1b[0m", end="")
-
     def curriculum_training(
         self,
     ):
-        env: LandingSimulationEnv = gym.make("landing_simulation-v0")  # type:ignore
-        for self.working_curriculum_step in range(self._curriculum_steps):
-            self.working_curriculum_step = self.working_curriculum_step
+        env: TrainingLandingEnv = gym.make("landing_simulation-v0")  # type:ignore
+        for self._working_curriculum_step in range(self._curriculum_steps):
+            self._working_curriculum_step = self._working_curriculum_step
+            env.set_curriculum_step(self._working_curriculum_step)
             for current_episode in range(self._max_num_episodes):
                 self._current_episode = current_episode
-                current_state, _current_state_y = env.reset()
-                for _ in range(400):
+                current_state = env.reset()
+                done = False
+                while not done:
                     action = self.double_q_learning_agent.guess(
                         current_state,
                         self.exploration_rate(
-                            current_episode, self.working_curriculum_step
+                            current_episode, self._working_curriculum_step
                         ),
                     )
-                    next_state, _next_state_y, reward, done, info = env.step(action)
+                    next_state, reward, done, info = env.step(action)
                     current_state_action = current_state + (action,)
                     self.double_q_learning_agent.state_action_counter[
                         current_state_action
@@ -153,9 +147,10 @@ class Trainer:
                         self._gamma,
                         reward,
                     )
+                    print(info)
                     if done:
-                        info["current_episode"] = self._current_episode
-                        info["remaining_episodes"] = (
+                        info["Curent episode"] = self._current_episode
+                        info["Remaining episodes"] = (
                             self._max_num_episodes - current_episode
                         )
                         # TODO add success rate
@@ -165,12 +160,28 @@ class Trainer:
                         break
                     current_state = next_state
             self.double_q_learning_agent.insert_curriculum_step(
-                self.working_curriculum_step
+                self._working_curriculum_step
             )
             self.double_q_learning_agent.transfer_learning(
-                self.working_curriculum_step,
+                self._working_curriculum_step,
                 self.transfer_learning_ratio(
-                    self.working_curriculum_step,
+                    self._working_curriculum_step,
                 ),
             )
+
             self.save()
+
+    def log(self, info: Dict[str, Any]):
+        # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+        # Clear screen and return to the left corner
+        print("\x1b[0;0f", end="")
+        print("\x1b[J", end="")
+        print(f"Curiculum step: {self._working_curriculum_step}")
+        for k, v in info.items():
+            print(f"{k}: {v}")
+        print("\x1b[0;0f", end="")
+        print("\x1b[J", end="")
+        # Prepare for next print
+        print("\x1b[0;0f", end="")
+        print("\x1b[J", end="")
+        print("\x1b[0m", end="")
