@@ -2,8 +2,6 @@
 This script starts a training session.
 """
 
-
-
 import rospy
 
 from dql_multirotor_landing.trainer import Trainer

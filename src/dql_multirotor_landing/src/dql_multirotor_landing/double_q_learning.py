@@ -30,28 +30,32 @@ StateAction = Tuple[
 
 
 class DoubleQLearningAgent:
+    """Agent that learns and makes decisions"""
+
     def __init__(self, curriculum_steps: int = 5) -> None:
         self.curriculum_steps = curriculum_steps
+        """Maximum number of curiculum steps"""
         self.Q_table_a = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.Q_table_b = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
         self.state_action_counter = np.zeros((curriculum_steps, 3, 3, 3, 7, 3))
-        self.check = True
 
     def save(self, save_path: Path):
-        # Avoid file ovewrite
+        """Save at specified `save_path`"""
         qa_path = save_path / "Q_table_a.npy"
         qb_path = save_path / "Q_table_b.npy"
         sac_path = save_path / "state_action_count.npy"
-        if self.check:
-            with open(qa_path, "wb") as f:
-                np.save(f, self.Q_table_a)
-            with open(qb_path, "wb") as f:
-                np.save(f, self.Q_table_b)
-            with open(sac_path, "wb") as f:
-                np.save(f, self.state_action_counter)
+
+        with open(qa_path, "wb") as f:
+            np.save(f, self.Q_table_a)
+        with open(qb_path, "wb") as f:
+            np.save(f, self.Q_table_b)
+        with open(sac_path, "wb") as f:
+            np.save(f, self.state_action_counter)
 
     @staticmethod
     def load(save_path: Path = ASSETS_PATH):
+        """Loads files, fails if one of the files is found o
+        either the Q tables and the state counter table have different shape"""
         # Allow to fail gracefully
         with open(save_path / "Q_table_a.npy", "rb") as f:
             qa = np.load(f)
@@ -75,6 +79,8 @@ class DoubleQLearningAgent:
         current_curriculum_step: int,
         transfer_learning_ratio: float,
     ):
+        """Update the new curriculum and scale it accordingly."""
+        # Eq 31
         self.Q_table_a[current_curriculum_step] = (
             self.Q_table_a[current_curriculum_step - 1] * transfer_learning_ratio
         )
@@ -90,7 +96,7 @@ class DoubleQLearningAgent:
         gamma: float,
         reward,
     ):
-        # Choose the action to follow
+        """Update the Q-tables and the state action counter"""
         self.state_action_counter[current_state_action] += 1
         self._update_q_table(
             self.Q_table_a if np.random.uniform(0, 1) < 0.5 else self.Q_table_a,
@@ -106,6 +112,7 @@ class DoubleQLearningAgent:
         state: State,
         exploration_rate: float,
     ):
+        """Guess a random action"""
         explore = np.random.uniform(0, 1) < exploration_rate
         return int(np.where(explore, np.random.randint(3), self.predict(state)))
 

@@ -29,9 +29,9 @@ class AbstractLandingEnv(gym.Env, ABC):
 
     def __init__(
         self,
-        t_max: int = 20,
         initial_curriculum_step: int = 0,
         *,
+        t_max: int = 20,
         f_ag: float = 22.92,
         p_max: float = 4.5,
         z_init: float = 2.0,
@@ -75,21 +75,19 @@ class AbstractLandingEnv(gym.Env, ABC):
         )
         """Service for getting model informations from gazebo"""
 
+        self._t_max = t_max
+        self._f_ag = f_ag
+        self._z_init = z_init
+        self._p_max = p_max
+        self._flyzone_x = (-p_max, p_max)
+        """Section 3.1.2: Maximum distance from the platform in the x direction"""
+        self._flyzone_y = (-p_max, p_max)
+        """Section 3.1.2: Maximum distance from the platform in the y direction"""
+        self._flyzone_z = (0.0, p_max)
+        """Section 3.1.2: Maximum distance from the platform in the y direction"""
         # Other variables needed during execution
         self._working_curriculum_step = initial_curriculum_step
         """Curriculum step in which we're working, it's zero indexed"""
-        self._t_max = t_max
-        """Maximum simulation time in seconds"""
-        self._f_ag = f_ag
-        """Agent frequency of decision making"""
-        self._flyzone_x = (-p_max, p_max)
-        """Maximum distance from the platform in the x direction"""
-        self._flyzone_y = (-p_max, p_max)
-        """Maximum distance from the platform in the y direction"""
-        self._flyzone_z = (0.0, p_max)
-        """Maximum distance from the platform in the y direction"""
-        self._z_init = z_init
-        """Initial height"""
 
     def close(self):
         self._model_coordinates.close()
@@ -97,9 +95,7 @@ class AbstractLandingEnv(gym.Env, ABC):
         self._pause_sim.close()
         self._set_model_state_service.close()
         self._reset_world_gazebo_service.close()
-
         self._observation_subscriber.unregister()
-
         self._action_publisher.unregister()
         self._reset_publisher.unregister()
 
@@ -146,9 +142,9 @@ class AbstractLandingEnv(gym.Env, ABC):
 class TrainingLandingEnv(AbstractLandingEnv):
     def __init__(
         self,
-        t_max: int = 20,
         initial_curriculum_step: int = 0,
         *,
+        t_max: int = 20,
         f_ag: float = 22.92,
         p_max: float = 4.5,
         z_init: float = 2.0,
@@ -164,11 +160,12 @@ class TrainingLandingEnv(AbstractLandingEnv):
             initial_curriculum_step,
             self._f_ag,
             self._t_max,
+            self._p_max,
         )
         """Underlying Markov decision process"""
 
     def reset(self) -> Tuple[int, int, int, int, int]:
-        # Reset the setpoints for the low-level controllers of the copter
+        # Reset the undelying MDP state
         self._mdp.reset()
 
         # Pause simulation
@@ -183,15 +180,17 @@ class TrainingLandingEnv(AbstractLandingEnv):
         # the first curriculum step"
         if self._working_curriculum_step == 0:
             # This value doens't seem to be discussed directly in the paper.
-            # However hey do say (still in Section 4.3):
+            # However they do say (still in Section 4.3):
             # "UAV is initialized close to the center of the
             # flyzone and thus in proximity to the moving
             # platform more frequently."
             # Leading to thing that this choice of mu is coherent
             mu = 0
-            sigma = self._mdp.p_max / 3
+            sigma = self._p_max / 3
             x_init = np.random.normal(mu, sigma)
         else:
+            # Not much it is said, but successive initial states are choosen uniformly
+            # within he fly zone
             x_init = np.random.uniform(self._flyzone_x[0], self._flyzone_x[1])
 
         # Clip to stay within fly zone
@@ -247,9 +246,7 @@ class TrainingLandingEnv(AbstractLandingEnv):
         """Function performs one timestep of the training."""
 
         # Update the setpoints based on the current action and publish them to the ROS network
-
         continuous_action = self._mdp.continuous_action(action_x, action_y)
-
         self._action_publisher.publish(continuous_action)
 
         # Let the simulation run for one RL timestep and allow to recieve obsevation
@@ -288,9 +285,9 @@ class TrainingLandingEnv(AbstractLandingEnv):
 class SimulationLandingEnv(AbstractLandingEnv):
     def __init__(
         self,
-        t_max: int = 20,
-        initial_curriculum_step: int = 0,
+        initial_curriculum_step: int = 4,
         *,
+        t_max: int = 20,
         f_ag: float = 22.92,
         p_max: float = 4.5,
         z_init: float = 4.0,

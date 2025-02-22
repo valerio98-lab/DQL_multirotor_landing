@@ -1,3 +1,7 @@
+"""
+This script starts a simulation.
+"""
+
 from typing import Any, Dict
 
 import gym
@@ -13,8 +17,6 @@ if __name__ == "__main__":
 
     env: SimulationLandingEnv = gym.make(
         "Landing-Simulation-v0",
-        # Zero indexed, curriculum step 5
-        initial_curriculum_step=4,
     )  # type:ignore
 
     def log(info: Dict[str, Any], clean=True):
@@ -31,6 +33,7 @@ if __name__ == "__main__":
         )
         for k, v in info.items():
             print(f"{k}: {v}")
+        print("Press Ctrl-C to exit...")
         if clean:
             # Prepare for next print
             print("\x1b[0;0f", end="")
@@ -50,7 +53,7 @@ if __name__ == "__main__":
             next_state_x, next_state_y, done, info = env.step(action_x, action_y)
 
             if done:
-                info["current_episode"] = current_episode
+                info["current_episode"] = current_episode + 1
                 log(info)
                 break
             current_state_x = next_state_x

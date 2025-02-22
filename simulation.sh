@@ -10,3 +10,4 @@ roslaunch dql_multirotor_landing simulation.launch
 rosnode kill -a
 rosnode cleanup
 killall rosmaster
+clear
