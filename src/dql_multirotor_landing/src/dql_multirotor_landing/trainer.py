@@ -22,8 +22,6 @@ class Trainer:
     # to reach the goal state, associated with the latest
     # step in the sequential curriculum in 96% of the last 100 episodes.
 
-    t_max = 20  # seconds
-
     def __init__(
         self,
         curriculum_steps: int = 5,
@@ -44,6 +42,8 @@ class Trainer:
             0.8257273369742982,
             0.8311571820651724,
         ],
+        t_max=20,
+        z_init=4.0,
     ) -> None:
         np.random.seed(seed)
         if not double_q_learning_agent:
@@ -54,7 +54,6 @@ class Trainer:
         self._omega = omega
         self._gamma = gamma
         self._scale_modification_value = scale_modification_value
-
         self.successive_successful_episodes = successive_successful_episodes
         self.success_rate = success_rate
         self._max_num_episodes = max_num_episodes
@@ -66,8 +65,9 @@ class Trainer:
         self._exploration_rate = 0.0
         self._curriculum_episode_count = 0
         self._successes = deque([], maxlen=successive_successful_episodes)
-
+        self._z_init = z_init
         self._alpha = self._alpha_min
+        self._t_max = 20
 
     def alpha(self, current_state_action: StateAction):
         counter = self.double_q_learning_agent.state_action_counter[
@@ -97,8 +97,8 @@ class Trainer:
         elif 0 <= current_episode <= 800:
             self._exploration_rate = 1.0
         else:
-            self._exploration_rate = min(
-                0.01, 1 + (0.01 - 1) * (current_episode - 800) / (2000 - 800)
+            self._exploration_rate = max(
+                1 + (0.01 - 1) * (current_episode - 800) / (2000 - 800), 0.01
             )
         return self._exploration_rate
 
@@ -145,8 +145,9 @@ class Trainer:
         ):
             env: TrainingLandingEnv = gym.make(
                 "Landing-Training-v0",
-                t_max=self.t_max,
+                t_max=self._t_max,
                 initial_curriculum_step=self._working_curriculum_step,
+                z_init=self._z_init,
             )  # type:ignore
             info = {}
             self._working_curriculum_step = self._working_curriculum_step
@@ -210,11 +211,7 @@ class Trainer:
         # TERMINAL_CONTACT = "\x1b[1;32mSUCCESS\x1b[0m: Touched platform"
         # "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in x direction"
 
-        writer = SummaryWriter(
-            log_dir=self.save_path
-            / "logs"
-            / f"curriculum_step{self._working_curriculum_step}"
-        )
+        writer = SummaryWriter(log_dir=self.save_path / "logs")
         writer.add_scalar(
             "Episode/Success Rate", info["Success rate"], self._curriculum_episode_count
         )
