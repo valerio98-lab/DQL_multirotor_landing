@@ -31,20 +31,21 @@ def log(info: Dict[str, Any]):
     print("\x1b[0m", end="")
 
 
-for current_episode in range(500):
+for current_episode in range(30):
     current_state_x, current_state_y = env.reset()
-    if current_state_y is None:
-        raise ValueError("Current state y is None, something went wrong")
-    for _ in range(400):
+
+    done = False
+    while not done:
         action_x = agent_x.predict(current_state_x)
-        action_y = agent_y.predict(current_state_y)  # type: ignore
-        print(action_x, action_y)
+        action_y = agent_y.predict(current_state_y)
+
         next_state_x, next_state_y, done, info = env.step(action_x, action_y)
 
         if done:
             info["current_episode"] = current_episode
             info["remaining_episodes"] = 400 - current_episode
-            print(info)
+            for k, v in info.items():
+                print(f"{k}: {v}")
             break
         current_state_x = next_state_x
         current_state_y = next_state_y

@@ -194,12 +194,13 @@ class AbstractMdp(ABC):
         self,
     ) -> Dict[str, Any]: ...
 
-    # @abstractmethod
-    # def reset(self):
-    #     self.current_shaping_value = RewardShapingValue()
-    #     self.previous_shaping_value = RewardShapingValue()
-    #     self.info: Dict[str, Any] = {}
-    #     self._step_count = 0
+    @abstractmethod
+    def reset(self):
+        self.current_shaping_value = RewardShapingValue()
+        self.previous_shaping_value = RewardShapingValue()
+        self.info: Dict[str, Any] = {}
+        self._step_count = 0
+        self.check_result = CheckResult.NON_TERMINAL
 
     def reward(self) -> float:
         return 0.0
@@ -346,14 +347,6 @@ class TrainingMdp(AbstractMdp):
                 "Cannot check an empty state\n"
                 + "You must call `discrete_state` before calling check."
             )
-        # print(f"Check 1: {self.current_continuous_observation.contact=}")
-        print(
-            f"Check 2: {self.current_continuous_observation.abs_p_z=}, {self.minimum_altitude=} "
-        )
-        # print(
-        #     f"Check 3: {self.current_continuous_observation.rel_p_x=}, {self.flyzone_x[0]}, {self.flyzone_x[1]}"
-        # )
-        # print(f"Check 4: {self._step_count=} , {self.t_max * self.f_ag =} ")
 
         # update other variables to perform checks
         self._step_count += 1
@@ -363,7 +356,6 @@ class TrainingMdp(AbstractMdp):
         # Section 3.3.6
         # Discussed briefly when explaining the rewards.
         elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
-            print("Hello")
             self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
         elif (
             self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
@@ -575,7 +567,7 @@ class SimulationMdp(AbstractMdp):
 
     current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
     previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
-    _current_continuous_action = Action(pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1)
+    _current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
 
     def __init__(
         self,
@@ -600,7 +592,7 @@ class SimulationMdp(AbstractMdp):
         delta_theta: float = np.deg2rad(7.12574),
         beta: float = 1 / 3,
         sigma_a: float = 0.416,
-        minimum_altitude: float = 0.2,
+        minimum_altitude: float = 0.0,
     ) -> None:
         super().__init__(
             working_curriculum_step,
@@ -791,7 +783,6 @@ class SimulationMdp(AbstractMdp):
                 "Cannot check an empty state\n"
                 + "You must call `discrete_state` before calling check."
             )
-        # print(f"Check 1: {self.current_continuous_observation.contact=}")
 
         # update other variables to perform checks
         self._step_count += 1
@@ -800,32 +791,32 @@ class SimulationMdp(AbstractMdp):
             self.check_result = CheckResult.TERMINAL_CONTACT
         # Section 3.3.6
         # Discussed briefly when explaining the rewards.
-        # elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
-        #     print(
-        #         f"Check 2: {self.current_continuous_observation.abs_p_z=}, {self.minimum_altitude=} "
-        #     )
-        #     self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+        elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
+            self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+            self.info["Relative z"] = self.current_continuous_observation.abs_p_z
+            self.info["Fly zone z"] = self.flyzone_z
         elif (
             self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
             or self.current_continuous_observation.rel_p_x > self.flyzone_x[1]
         ):
-            print(
-                f"Check 3: {self.current_continuous_observation.rel_p_x=}, {self.flyzone_x[0]=}, {self.flyzone_x[1]=}"
-            )
             self.check_result = CheckResult.TERMINAL_FLYZONE_X
+            self.info["Relative x"] = self.current_continuous_observation.rel_p_x
+            self.info["Fly zone x"] = self.flyzone_x
+
         elif (
             self.current_continuous_observation.rel_p_y < self.flyzone_y[0]
             or self.current_continuous_observation.rel_p_y > self.flyzone_y[1]
         ):
-            print(
-                f"Check 3: {self.current_continuous_observation.rel_p_y=}, {self.flyzone_y[0]=}, {self.flyzone_y[1]=}"
-            )
             self.check_result = CheckResult.TERMINAL_FLYZONE_Y
+            self.info["Relative y"] = self.current_continuous_observation.rel_p_y
+            self.info["Fly zone y"] = self.flyzone_y
+
         elif self.current_continuous_observation.abs_p_z > self.flyzone_z[1]:
             self.check_result = CheckResult.TERMINAL_FLYZONE_Z
+            self.info["Relative z"] = self.current_continuous_observation.rel_p_y
+            self.info["Fly zone z"] = self.flyzone_y
 
         elif self._step_count >= (self.t_max * self.f_ag):
-            print(f"Check 4: {self._step_count=} , {self.t_max * self.f_ag =} ")
             self.check_result = CheckResult.TERMINAL_TIMEOUT
         if (
             self.check_result == CheckResult.TERMINAL_CONTACT
@@ -836,9 +827,7 @@ class SimulationMdp(AbstractMdp):
             or self.check_result == CheckResult.TERMINAL_TIMEOUT
         ):
             self.info["Termination condition"] = self.check_result.value
-            # exit()
         self.info["Current step"] = self._step_count
-        # print(f"{self.check_result=}")
         return self.info
 
     def continuous_action(self, action_x: int, action_y: int):
@@ -873,13 +862,10 @@ class SimulationMdp(AbstractMdp):
         return self._current_continuous_action
 
     def reset(self):
-        # super().reset()
-        print("Resetting bitch")
+        super().reset()
         self.current_continuous_observation = ContinuousObservation()
         self.current_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
         self.previous_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
         self.current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
         self.previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
-        self._current_continuous_action = Action(
-            pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1
-        )
+        self._current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)

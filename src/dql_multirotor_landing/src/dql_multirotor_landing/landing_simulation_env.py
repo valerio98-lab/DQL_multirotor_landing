@@ -217,11 +217,6 @@ class TrainingLandingEnv(AbstractLandingEnv):
 
         self.set_model_state_service(initial_drone)
 
-        # Reset episode counters and logging variables
-        self.step_number_in_episode = 0
-        self.episode_reward = 0
-        self.done_numeric = 0
-
         self.reset_simulation_publisher.publish(Bool(True))
         # Let simulation update values
         self.unpause_sim()
@@ -239,9 +234,8 @@ class TrainingLandingEnv(AbstractLandingEnv):
             ]
         )
         abs_v_z = drone.pose.position.z
-        observation = self.observation
         observation_continuous = ContinuousObservation(
-            observation, pitch, roll, abs_v_z
+            self.observation, pitch, roll, abs_v_z
         )
         observation_x = self.mdp.discrete_state(
             observation_continuous,
@@ -273,9 +267,8 @@ class TrainingLandingEnv(AbstractLandingEnv):
             ]
         )
         abs_v_z = drone.pose.position.z
-        observation = self.observation
         observation_continuous = ContinuousObservation(
-            observation, pitch, roll, abs_v_z
+            self.observation, pitch, roll, abs_v_z
         )
 
         discrete_observation = self.mdp.discrete_state(observation_continuous)
@@ -296,8 +289,8 @@ class SimulationLandingEnv(AbstractLandingEnv):
         self,
         f_ag: float = 22.92,
         t_max: int = 20,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_x: Tuple[float, float] = (-9, 9),
+        flyzone_y: Tuple[float, float] = (-9, 9),
         flyzone_z: Tuple[float, float] = (0, 9),
         z_init: float = 4,
         *,
@@ -379,11 +372,8 @@ class SimulationLandingEnv(AbstractLandingEnv):
         self,
     ) -> Tuple[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]]:
         # Reset the setpoints for the low-level controllers of the copter
-        print("Siamo nel reset")
+
         self.mdp.reset()
-        print(
-            f"{self.mdp.current_discrete_state_x=},{self.mdp.current_discrete_state_y=}"
-        )
 
         # Pause simulation
         self.reset_world_gazebo_service()
@@ -442,9 +432,9 @@ class SimulationLandingEnv(AbstractLandingEnv):
             ]
         )
         abs_v_z = drone.pose.position.z
-        observation = self.observation
+
         observation_continuous = ContinuousObservation(
-            observation, pitch, roll, abs_v_z
+            self.observation, pitch, roll, abs_v_z
         )
         observation_x, observation_y = self.mdp.discrete_state(
             observation_continuous,
@@ -476,9 +466,8 @@ class SimulationLandingEnv(AbstractLandingEnv):
             ]
         )
         abs_v_z = drone.pose.position.z
-        observation = self.observation
         observation_continuous = ContinuousObservation(
-            observation, pitch, roll, abs_v_z
+            self.observation, pitch, roll, abs_v_z
         )
 
         discrete_observation_x, discrete_observation_y = self.mdp.discrete_state(
