@@ -120,7 +120,7 @@ class Trainer:
     def curriculum_training(
         self,
     ):
-        env: TrainingLandingEnv = gym.make("landing_simulation-v0")  # type:ignore
+        env: TrainingLandingEnv = gym.make("Landing-Training-v0")  # type:ignore
         for self._working_curriculum_step in range(self._curriculum_steps):
             self._working_curriculum_step = self._working_curriculum_step
             env.set_curriculum_step(self._working_curriculum_step)

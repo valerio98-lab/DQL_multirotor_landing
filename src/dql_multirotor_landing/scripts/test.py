@@ -3,15 +3,14 @@ from typing import Any, Dict
 import gym
 
 from dql_multirotor_landing.double_q_learning import DoubleQLearningAgent
-from dql_multirotor_landing.landing_simulation_env import LandingSimulationEnv
+from dql_multirotor_landing.landing_simulation_env import SimulationLandingEnv
 
 agent_x = DoubleQLearningAgent.load()
 agent_y = DoubleQLearningAgent.load()
 
 
-env: LandingSimulationEnv = gym.make(
-    "landing_simulation-v0",
-    two_dimensional=True,
+env: SimulationLandingEnv = gym.make(
+    "Landing-Simulation-v0",
     # Zero indexed, curriculum step 5
     initial_curriculum_step=4,
 )  # type:ignore
@@ -40,7 +39,7 @@ for current_episode in range(500):
         action_x = agent_x.predict(current_state_x)
         action_y = agent_y.predict(current_state_y)  # type: ignore
         print(action_x, action_y)
-        next_state_x, next_state_y, _, done, info = env.step(action_x)
+        next_state_x, next_state_y, done, info = env.step(action_x, action_y)
 
         if done:
             info["current_episode"] = current_episode

@@ -75,19 +75,29 @@ class Limits:
 
 
 class CheckResult(Enum):
-    TERMINAL_CONTACT = 0
-    TERMINAL_SUCCESS = 1
-    TERMINAL_FLYZONE_X = 2
-    TERMINAL_FLYZONE_Y = 3
-    TERMINAL_FLYZONE_Z = 4
-    TERMINAL_MINIMUM_ALTITUDE = 5
-    TERMINAL_TIMEOUT = 6
+    TERMINAL_CONTACT = "\x1b[1;32mSUCCESS\x1b[0m: Touched platform"
+    TERMINAL_SUCCESS = "\x1b[1;32mSUCCESS\x1b[0m: Goal state reached"
+    TERMINAL_FLYZONE_X = (
+        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in x direction"
+    )
+    TERMINAL_FLYZONE_Y = (
+        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in y direction"
+    )
+    TERMINAL_FLYZONE_Z = (
+        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in z direction"
+    )
+    TERMINAL_MINIMUM_ALTITUDE = "\x1b[1;31mFAILURE\x1b[0m: Reached minimum altitude"
+    TERMINAL_TIMEOUT = "\x1b[1;31mFAILURE\x1b[0m: Maximum episode duration"
     NON_TERMINAL_SUCCESS = 7
     NON_TERMINAL = 8
 
 
-# During training, the yaw controller ensures ψ_rel = 0
 class AbstractMdp(ABC):
+    current_shaping_value = RewardShapingValue()
+    previous_shaping_value = RewardShapingValue()
+    info: Dict[str, Any] = {}
+    _step_count = 0
+
     def __init__(
         self,
         working_curriculum_step: int,
@@ -136,6 +146,7 @@ class AbstractMdp(ABC):
         self.minimum_altitude = minimum_altitude
         self.discrete_angles = np.linspace(-theta_max, theta_max, (n_theta * 2) + 1)
         self.limits = Limits(working_curriculum_step)
+        self._delta_t = 1 / self.f_ag
         self.check_result = CheckResult.NON_TERMINAL
 
     def _latest_valid_curriculum_step_for_state(
@@ -183,19 +194,24 @@ class AbstractMdp(ABC):
         self,
     ) -> Dict[str, Any]: ...
 
-    @abstractmethod
-    def reset(self): ...
+    # @abstractmethod
+    # def reset(self):
+    #     self.current_shaping_value = RewardShapingValue()
+    #     self.previous_shaping_value = RewardShapingValue()
+    #     self.info: Dict[str, Any] = {}
+    #     self._step_count = 0
 
     def reward(self) -> float:
         return 0.0
 
 
 class TrainingMdp(AbstractMdp):
-    current_shaping_value = RewardShapingValue()
-    previous_shaping_value = RewardShapingValue()
     current_continuous_observation = ContinuousObservation()
     current_discrete_state: Optional[Tuple[int, int, int, int, int]] = None
     previous_discrete_state: Optional[Tuple[int, int, int, int, int]] = None
+    _curriculum_check = 0
+    _cumulative_reward = 0
+    _current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
 
     def __init__(
         self,
@@ -245,12 +261,6 @@ class TrainingMdp(AbstractMdp):
             sigma_a=sigma_a,
             minimum_altitude=minimum_altitude,
         )
-        self._delta_t = 1 / self.f_ag
-        self._curriculum_check = 0
-        self._step_count = 0
-        self._cumulative_reward = 0
-        self._current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
-        self.info: Dict[str, Any] = {}
 
     def discrete_state(
         self,
@@ -344,8 +354,7 @@ class TrainingMdp(AbstractMdp):
         #     f"Check 3: {self.current_continuous_observation.rel_p_x=}, {self.flyzone_x[0]}, {self.flyzone_x[1]}"
         # )
         # print(f"Check 4: {self._step_count=} , {self.t_max * self.f_ag =} ")
-        # Set the result value to a non terminal check
-        self.check_result = CheckResult.NON_TERMINAL
+
         # update other variables to perform checks
         self._step_count += 1
         # I guess touch contact has priority over everything
@@ -525,6 +534,8 @@ class TrainingMdp(AbstractMdp):
             r_term = self.w_succ * r_max
 
         r_t = r_p + r_v + r_theta + r_dur + r_term
+        # log
+        self._cumulative_reward += r_t
         return float(r_t)
 
     def continuous_action(self, action_x: int, action_y: int = 2):
@@ -547,14 +558,328 @@ class TrainingMdp(AbstractMdp):
         return self._current_continuous_action
 
     def reset(self):
-        self._current_continuous_action
-        self._curriculum_check = 0
-        self._step_count = 0
-        self._cumulative_reward = 0
-        self._current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
-        self.current_shaping_value = RewardShapingValue()
-        self.previous_shaping_value = RewardShapingValue()
+        super().reset()
         self.current_continuous_observation = ContinuousObservation()
         self.current_discrete_state: Optional[Tuple[int, int, int, int, int]] = None
         self.previous_discrete_state: Optional[Tuple[int, int, int, int, int]] = None
-        self.info = {}
+        self._curriculum_check = 0
+        self._cumulative_reward = 0
+        self._current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
+
+
+class SimulationMdp(AbstractMdp):
+    current_continuous_observation = ContinuousObservation()
+
+    current_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
+    previous_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
+
+    current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
+    previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
+    _current_continuous_action = Action(pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1)
+
+    def __init__(
+        self,
+        working_curriculum_step: int,
+        f_ag: float,
+        t_max: int,
+        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_z: Tuple[float, float] = (0, 9),
+        *,
+        w_p: float = -100,
+        w_v: float = -10,
+        w_theta: float = -1.55,
+        w_dur: float = -6,
+        w_fail: float = -2.6,
+        w_succ: float = 2.6,
+        n_theta: int = 3,
+        p_max: float = 4.5,
+        v_max: float = 3.39411,
+        a_max: float = 1.28,
+        theta_max: float = np.deg2rad(21.37723),
+        delta_theta: float = np.deg2rad(7.12574),
+        beta: float = 1 / 3,
+        sigma_a: float = 0.416,
+        minimum_altitude: float = 0.2,
+    ) -> None:
+        super().__init__(
+            working_curriculum_step,
+            f_ag,
+            t_max,
+            flyzone_x,
+            flyzone_y,
+            flyzone_z,
+            w_p=w_p,
+            w_v=w_v,
+            w_theta=w_theta,
+            w_dur=w_dur,
+            w_fail=w_fail,
+            w_succ=w_succ,
+            n_theta=n_theta,
+            p_max=p_max,
+            v_max=v_max,
+            a_max=a_max,
+            theta_max=theta_max,
+            delta_theta=delta_theta,
+            beta=beta,
+            sigma_a=sigma_a,
+            minimum_altitude=minimum_altitude,
+        )
+
+    def discrete_state(
+        self,
+        current_continuous_observation: ContinuousObservation,
+    ) -> Tuple[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]]:
+        self.previous_discrete_state_x = self.current_discrete_state_x
+        self.previous_discrete_state_y = self.current_discrete_state_y
+        self.current_continuous_observation = current_continuous_observation
+        return self.discrete_state_x(), self.discrete_state_y()
+
+    def discrete_state_x(
+        self,
+    ) -> Tuple[int, int, int, int, int]:
+        continuous_position = np.clip(
+            self.current_continuous_observation.rel_p_x / self.p_max, -1, 1
+        )
+        continuous_velocity = np.clip(
+            self.current_continuous_observation.rel_v_x / self.v_max, -1, 1
+        )
+        continuous_acceleration = np.clip(
+            self.current_continuous_observation.rel_a_x / self.a_max, -1, 1
+        )
+        latest_valid_curriculum_step = min(
+            [
+                self._latest_valid_curriculum_step_for_state(
+                    self.limits.position, continuous_position
+                ),
+                self._latest_valid_curriculum_step_for_state(
+                    self.limits.velocity, continuous_velocity
+                ),
+                self._latest_valid_curriculum_step_for_state(
+                    self.limits.acceleration, continuous_acceleration
+                ),
+            ]
+        )
+        position_contraction = self.beta
+        if latest_valid_curriculum_step < self.working_curriculum_step:
+            position_contraction = (
+                self.limits.position[latest_valid_curriculum_step + 1]
+                / self.limits.position[latest_valid_curriculum_step]
+            )
+        discrete_position = self._discretiazion_function(
+            continuous_position,
+            self.limits.position[latest_valid_curriculum_step] * position_contraction,
+            self.limits.position[latest_valid_curriculum_step],
+        )
+
+        velocity_contraction = self.beta
+        if latest_valid_curriculum_step < self.working_curriculum_step:
+            velocity_contraction = (
+                self.limits.velocity[latest_valid_curriculum_step + 1]
+                / self.limits.velocity[latest_valid_curriculum_step]
+            )
+        discrete_velocity = self._discretiazion_function(
+            continuous_velocity,
+            self.limits.velocity[latest_valid_curriculum_step] * velocity_contraction,
+            self.limits.velocity[latest_valid_curriculum_step],
+        )
+
+        acceleration_contraction = self.sigma_a
+        if latest_valid_curriculum_step == self.working_curriculum_step:
+            acceleration_contraction *= self.beta
+        discrete_acceleration = self._discretiazion_function(
+            continuous_acceleration,
+            self.limits.acceleration[latest_valid_curriculum_step]
+            * acceleration_contraction,
+            self.limits.acceleration[latest_valid_curriculum_step],
+        )
+        clipped_pitch = np.clip(
+            self.current_continuous_observation.pitch,
+            -self.theta_max,
+            self.theta_max,
+        )
+        discrete_angle = np.argmin(np.abs(self.discrete_angles - clipped_pitch))
+
+        self.current_discrete_state_x = (
+            int(latest_valid_curriculum_step),
+            int(discrete_position),
+            int(discrete_velocity),
+            int(discrete_acceleration),
+            int(discrete_angle),
+        )
+
+        return self.current_discrete_state_x
+
+    def discrete_state_y(
+        self,
+    ) -> Tuple[int, int, int, int, int]:
+        continuous_position = np.clip(
+            self.current_continuous_observation.rel_p_y / self.p_max, -1, 1
+        )
+        continuous_velocity = np.clip(
+            self.current_continuous_observation.rel_v_y / self.v_max, -1, 1
+        )
+        continuous_acceleration = np.clip(
+            self.current_continuous_observation.rel_a_y / self.a_max, -1, 1
+        )
+        latest_valid_curriculum_step = min(
+            [
+                self._latest_valid_curriculum_step_for_state(
+                    self.limits.position, continuous_position
+                ),
+                self._latest_valid_curriculum_step_for_state(
+                    self.limits.velocity, continuous_velocity
+                ),
+                self._latest_valid_curriculum_step_for_state(
+                    self.limits.acceleration, continuous_acceleration
+                ),
+            ]
+        )
+        position_contraction = self.beta
+        if latest_valid_curriculum_step < self.working_curriculum_step:
+            position_contraction = (
+                self.limits.position[latest_valid_curriculum_step + 1]
+                / self.limits.position[latest_valid_curriculum_step]
+            )
+        discrete_position = self._discretiazion_function(
+            continuous_position,
+            self.limits.position[latest_valid_curriculum_step] * position_contraction,
+            self.limits.position[latest_valid_curriculum_step],
+        )
+
+        velocity_contraction = self.beta
+        if latest_valid_curriculum_step < self.working_curriculum_step:
+            velocity_contraction = (
+                self.limits.velocity[latest_valid_curriculum_step + 1]
+                / self.limits.velocity[latest_valid_curriculum_step]
+            )
+        discrete_velocity = self._discretiazion_function(
+            continuous_velocity,
+            self.limits.velocity[latest_valid_curriculum_step] * velocity_contraction,
+            self.limits.velocity[latest_valid_curriculum_step],
+        )
+
+        acceleration_contraction = self.sigma_a
+        if latest_valid_curriculum_step == self.working_curriculum_step:
+            acceleration_contraction *= self.beta
+        discrete_acceleration = self._discretiazion_function(
+            continuous_acceleration,
+            self.limits.acceleration[latest_valid_curriculum_step]
+            * acceleration_contraction,
+            self.limits.acceleration[latest_valid_curriculum_step],
+        )
+        clipped_roll = np.clip(
+            self.current_continuous_observation.roll,
+            -self.theta_max,
+            self.theta_max,
+        )
+        discrete_angle = np.argmin(np.abs(self.discrete_angles - clipped_roll))
+
+        self.current_discrete_state_y = (
+            int(latest_valid_curriculum_step),
+            int(discrete_position),
+            int(discrete_velocity),
+            int(discrete_acceleration),
+            int(discrete_angle),
+        )
+
+        return self.current_discrete_state_y
+
+    def check(self):
+        if not self.current_discrete_state_x or not self.current_discrete_state_y:
+            raise ValueError(
+                "Cannot check an empty state\n"
+                + "You must call `discrete_state` before calling check."
+            )
+        # print(f"Check 1: {self.current_continuous_observation.contact=}")
+
+        # update other variables to perform checks
+        self._step_count += 1
+        # I guess touch contact has priority over everything
+        if self.current_continuous_observation.contact:
+            self.check_result = CheckResult.TERMINAL_CONTACT
+        # Section 3.3.6
+        # Discussed briefly when explaining the rewards.
+        # elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
+        #     print(
+        #         f"Check 2: {self.current_continuous_observation.abs_p_z=}, {self.minimum_altitude=} "
+        #     )
+        #     self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+        elif (
+            self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
+            or self.current_continuous_observation.rel_p_x > self.flyzone_x[1]
+        ):
+            print(
+                f"Check 3: {self.current_continuous_observation.rel_p_x=}, {self.flyzone_x[0]=}, {self.flyzone_x[1]=}"
+            )
+            self.check_result = CheckResult.TERMINAL_FLYZONE_X
+        elif (
+            self.current_continuous_observation.rel_p_y < self.flyzone_y[0]
+            or self.current_continuous_observation.rel_p_y > self.flyzone_y[1]
+        ):
+            print(
+                f"Check 3: {self.current_continuous_observation.rel_p_y=}, {self.flyzone_y[0]=}, {self.flyzone_y[1]=}"
+            )
+            self.check_result = CheckResult.TERMINAL_FLYZONE_Y
+        elif self.current_continuous_observation.abs_p_z > self.flyzone_z[1]:
+            self.check_result = CheckResult.TERMINAL_FLYZONE_Z
+
+        elif self._step_count >= (self.t_max * self.f_ag):
+            print(f"Check 4: {self._step_count=} , {self.t_max * self.f_ag =} ")
+            self.check_result = CheckResult.TERMINAL_TIMEOUT
+        if (
+            self.check_result == CheckResult.TERMINAL_CONTACT
+            or self.check_result == CheckResult.TERMINAL_FLYZONE_X
+            or self.check_result == CheckResult.TERMINAL_FLYZONE_Y
+            or self.check_result == CheckResult.TERMINAL_FLYZONE_Z
+            or self.check_result == CheckResult.TERMINAL_MINIMUM_ALTITUDE
+            or self.check_result == CheckResult.TERMINAL_TIMEOUT
+        ):
+            self.info["Termination condition"] = self.check_result.value
+            # exit()
+        self.info["Current step"] = self._step_count
+        # print(f"{self.check_result=}")
+        return self.info
+
+    def continuous_action(self, action_x: int, action_y: int):
+        if action_x == 0:  # Increase
+            self._current_continuous_action.pitch = min(
+                (
+                    self._current_continuous_action.pitch + self.delta_theta,
+                    self.theta_max,
+                )
+            )
+        elif action_x == 1:  # Decrease
+            self._current_continuous_action.pitch = max(
+                (
+                    self._current_continuous_action.pitch - self.delta_theta,
+                    -self.theta_max,
+                )
+            )
+        if action_y == 0:  # Increase
+            self._current_continuous_action.roll = min(
+                (
+                    self._current_continuous_action.roll + self.delta_theta,
+                    self.theta_max,
+                )
+            )
+        elif action_y == 1:  # Decrease
+            self._current_continuous_action.roll = max(
+                (
+                    self._current_continuous_action.roll - self.delta_theta,
+                    -self.theta_max,
+                )
+            )
+        return self._current_continuous_action
+
+    def reset(self):
+        # super().reset()
+        print("Resetting bitch")
+        self.current_continuous_observation = ContinuousObservation()
+        self.current_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
+        self.previous_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
+        self.current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
+        self.previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
+        self._current_continuous_action = Action(
+            pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1
+        )

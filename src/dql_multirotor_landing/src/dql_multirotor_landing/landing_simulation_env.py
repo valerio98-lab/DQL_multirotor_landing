@@ -5,7 +5,7 @@ Furthermore, it registers the landing scenario as an environment in gym.
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import gym  # type: ignore
 import numpy as np
@@ -17,7 +17,7 @@ from std_msgs.msg import Bool
 from std_srvs.srv import Empty
 from tf.transformations import euler_from_quaternion
 
-from dql_multirotor_landing.mdp import AbstractMdp, ContinuousObservation, TrainingMdp
+from dql_multirotor_landing.mdp import ContinuousObservation, SimulationMdp, TrainingMdp
 from dql_multirotor_landing.msg import Action, Observation
 from dql_multirotor_landing.utils import get_publisher  # type: ignore
 
@@ -26,16 +26,15 @@ class AbstractLandingEnv(gym.Env, ABC):
     observation: Observation = Observation()
     cumulative_reward: float = 0.0
     number_of_steps: int = 0
-    mdp: AbstractMdp
 
     def __init__(
         self,
         f_ag: float = 22.92,
-        t_max: int = 40,
+        t_max: int = 20,
         flyzone_x: Tuple[float, float] = (-4.5, 4.5),
         flyzone_y: Tuple[float, float] = (-4.5, 4.5),
         flyzone_z: Tuple[float, float] = (0, 9),
-        z_init: float = 4.0,
+        z_init: float = 2.0,
         *,
         initial_curriculum_step: int = 0,
     ):
@@ -108,15 +107,20 @@ class AbstractLandingEnv(gym.Env, ABC):
         self,
     ) -> Union[
         Tuple[int, int, int, int, int],
-        Union[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]],
+        Tuple[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]],
     ]: ...
 
     @abstractmethod
     def step(
         self, action: Union[int, Tuple[int, int]]
     ) -> Union[
-        Tuple[int, int, int, int, int],
-        Union[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]],
+        Tuple[Tuple[int, int, int, int, int], float, bool, Dict[str, Any]],
+        Tuple[
+            Tuple[int, int, int, int, int],
+            Tuple[int, int, int, int, int],
+            bool,
+            Dict[str, Any],
+        ],
     ]: ...
 
 
@@ -124,7 +128,7 @@ class TrainingLandingEnv(AbstractLandingEnv):
     def __init__(
         self,
         f_ag: float = 22.92,
-        t_max: int = 40,
+        t_max: int = 20,
         flyzone_x: Tuple[float, float] = (-4.5, 4.5),
         flyzone_y: Tuple[float, float] = (-4.5, 4.5),
         flyzone_z: Tuple[float, float] = (0, 9),
@@ -287,8 +291,215 @@ class TrainingLandingEnv(AbstractLandingEnv):
         )
 
 
+class SimulationLandingEnv(AbstractLandingEnv):
+    def __init__(
+        self,
+        f_ag: float = 22.92,
+        t_max: int = 20,
+        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_z: Tuple[float, float] = (0, 9),
+        z_init: float = 4,
+        *,
+        initial_curriculum_step: int = 0,
+    ):
+        # super().__init__(
+        #     f_ag,
+        #     t_max,
+        #     flyzone_x,
+        #     flyzone_y,
+        #     flyzone_z,
+        #     z_init,
+        #     initial_curriculum_step=initial_curriculum_step,
+        # )
+        # region Ros Boilerplate
+        rospy.init_node("landing_simulation_gym_node")
+        # Setup publishers
+        self.action_to_interface_publisher = get_publisher(
+            "training_action_interface/action_to_interface", Action, queue_size=0
+        )
+        self.reset_simulation_publisher = get_publisher(
+            "training/reset_simulation", Bool, queue_size=0
+        )
+        # Setup subscribers
+        self.observation_continuous_subscriber = rospy.Subscriber(
+            "/hummingbird/training_observation_interface/observations",
+            Observation,
+            self.read_training_continuous_observations,
+        )
+
+        # Set up services
+        rospy.wait_for_service("/gazebo/reset_world")
+        self.reset_world_gazebo_service = rospy.ServiceProxy(
+            "/gazebo/reset_world", Empty
+        )
+        rospy.wait_for_service("/gazebo/set_model_state")
+        self.set_model_state_service = rospy.ServiceProxy(
+            "/gazebo/set_model_state", SetModelState
+        )
+        rospy.wait_for_service("/gazebo/pause_physics")
+        self.pause_sim = rospy.ServiceProxy("/gazebo/pause_physics", Empty)
+        rospy.wait_for_service("/gazebo/unpause_physics")
+        self.unpause_sim = rospy.ServiceProxy("/gazebo/unpause_physics", Empty)
+        rospy.wait_for_service("/gazebo/get_model_state")
+        self.model_coordinates = rospy.ServiceProxy(
+            "/gazebo/get_model_state", GetModelState
+        )
+        # endregion
+        # Other variables needed during execution
+        self.current_curriculum_step = initial_curriculum_step
+        self.f_ag = f_ag
+        self.t_max = t_max
+        self.flyzone_x = flyzone_x
+        self.flyzone_y = flyzone_y
+        self.flyzone_z = flyzone_z
+        self.z_init = z_init
+        self.mdp = SimulationMdp(
+            initial_curriculum_step,
+            self.f_ag,
+            self.t_max,
+            self.flyzone_x,
+            self.flyzone_y,
+            self.flyzone_z,
+        )
+
+    def set_curriculum_step(self, curriculum_step: int):
+        self.current_curriculum_step = curriculum_step
+        # TODO: Maybe implement set_curriculum_step
+        self.mdp = SimulationMdp(
+            curriculum_step,
+            self.f_ag,
+            self.t_max,
+            self.flyzone_x,
+            self.flyzone_y,
+            self.flyzone_z,
+        )
+
+    def reset(
+        self,
+    ) -> Tuple[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]]:
+        # Reset the setpoints for the low-level controllers of the copter
+        print("Siamo nel reset")
+        self.mdp.reset()
+        print(
+            f"{self.mdp.current_discrete_state_x=},{self.mdp.current_discrete_state_y=}"
+        )
+
+        # Pause simulation
+        self.reset_world_gazebo_service()
+        self.pause_sim()
+        moving_platform = self.model_coordinates("moving_platform", "world")
+        # Initialize drone state
+        initial_drone = ModelState()
+        initial_drone.model_name = "hummingbird"
+        # Section 4.3 Initializazion
+        # "we use the following normal distribution to determine the UAV’s
+        # initial position within the fly zone during
+        # the first curriculum step"
+
+        x_init = np.random.uniform(self.flyzone_x[0], self.flyzone_x[1])
+        y_init = np.random.uniform(self.flyzone_y[0], self.flyzone_y[1])
+
+        # Clip to stay within fly zone
+        initial_drone.pose.position.x = 0
+        initial_drone.pose.position.y = 0
+        initial_drone.pose.position.z = self.z_init
+        # Section 3.12:
+        # Each landing trial will begin with the UAV being in hover state,
+        # leading to the following initial conditions for rotational movement
+        initial_drone.twist.linear.x = 0
+        initial_drone.twist.linear.y = 0
+        initial_drone.twist.linear.z = 0
+        initial_drone.twist.angular.x = 0
+        initial_drone.twist.angular.y = 0
+        initial_drone.twist.angular.z = 0
+        initial_drone.pose.orientation.x = 0
+        initial_drone.pose.orientation.y = 0
+        initial_drone.pose.orientation.z = 0
+        initial_drone.pose.orientation.w = 1.0
+
+        self.set_model_state_service(initial_drone)
+
+        # Reset episode counters and logging variables
+        self.step_number_in_episode = 0
+        self.episode_reward = 0
+        self.done_numeric = 0
+
+        self.reset_simulation_publisher.publish(Bool(True))
+        # Let simulation update values
+        self.unpause_sim()
+        rospy.sleep(1 / self.f_ag)
+        self.pause_sim()
+        # Save temporarily the current continuous state to avoid sinchronization issues
+        # due to callbacks
+        drone = self.model_coordinates("hummingbird", "world")
+        roll, pitch, _ = euler_from_quaternion(
+            quaternion=[
+                drone.pose.orientation.x,
+                drone.pose.orientation.y,
+                drone.pose.orientation.z,
+                drone.pose.orientation.w,
+            ]
+        )
+        abs_v_z = drone.pose.position.z
+        observation = self.observation
+        observation_continuous = ContinuousObservation(
+            observation, pitch, roll, abs_v_z
+        )
+        observation_x, observation_y = self.mdp.discrete_state(
+            observation_continuous,
+        )
+        return (observation_x, observation_y)
+
+    def step(self, action_x: int, action_y: int = 2):  # type: ignore
+        """Function performs one timestep of the training."""
+
+        # Update the setpoints based on the current action and publish them to the ROS network
+
+        continuous_action = self.mdp.continuous_action(action_x, action_y)
+
+        self.action_to_interface_publisher.publish(continuous_action)
+
+        # Let the simulation run for one RL timestep and allow to recieve obsevation
+        self.unpause_sim()
+        rospy.sleep(1 / self.f_ag)
+        self.pause_sim()
+
+        # Map the current observation to a discrete state value
+        drone = self.model_coordinates("hummingbird", "world")
+        roll, pitch, _ = euler_from_quaternion(
+            quaternion=[
+                drone.pose.orientation.x,
+                drone.pose.orientation.y,
+                drone.pose.orientation.z,
+                drone.pose.orientation.w,
+            ]
+        )
+        abs_v_z = drone.pose.position.z
+        observation = self.observation
+        observation_continuous = ContinuousObservation(
+            observation, pitch, roll, abs_v_z
+        )
+
+        discrete_observation_x, discrete_observation_y = self.mdp.discrete_state(
+            observation_continuous
+        )
+
+        info = self.mdp.check()
+        return (
+            discrete_observation_x,
+            discrete_observation_y,
+            "Termination condition" in info.keys(),
+            info,
+        )
+
+
 # Register the training environment in gym as an available one
+# register(
+#     id="Landing-Training-v0",
+#     entry_point="dql_multirotor_landing.landing_simulation_env:TrainingLandingEnv",
+# )
 register(
-    id="landing_simulation-v0",
-    entry_point="dql_multirotor_landing.landing_simulation_env:TrainingLandingEnv",
+    id="Landing-Simulation-v0",
+    entry_point="dql_multirotor_landing.landing_simulation_env:SimulationLandingEnv",
 )
