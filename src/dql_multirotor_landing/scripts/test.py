@@ -43,9 +43,11 @@ for current_episode in range(30):
 
         if done:
             info["current_episode"] = current_episode
-            info["remaining_episodes"] = 400 - current_episode
+            print("=" * 80)
             for k, v in info.items():
                 print(f"{k}: {v}")
+            print("=" * 80)
+            env.pause_sim()
             break
         current_state_x = next_state_x
         current_state_y = next_state_y

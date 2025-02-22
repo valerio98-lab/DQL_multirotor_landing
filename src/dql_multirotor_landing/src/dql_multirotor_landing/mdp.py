@@ -1,6 +1,6 @@
+import enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -74,22 +74,16 @@ class Limits:
         return self._acceleration[: self.working_curriculum_step + 1]
 
 
-class CheckResult(Enum):
-    TERMINAL_CONTACT = "\x1b[1;32mSUCCESS\x1b[0m: Touched platform"
-    TERMINAL_SUCCESS = "\x1b[1;32mSUCCESS\x1b[0m: Goal state reached"
-    TERMINAL_FLYZONE_X = (
-        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in x direction"
-    )
-    TERMINAL_FLYZONE_Y = (
-        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in y direction"
-    )
-    TERMINAL_FLYZONE_Z = (
-        "\x1b[1;31mFAILURE\x1b[0m: Drone moved too far from platform in z direction"
-    )
-    TERMINAL_MINIMUM_ALTITUDE = "\x1b[1;31mFAILURE\x1b[0m: Reached minimum altitude"
-    TERMINAL_TIMEOUT = "\x1b[1;31mFAILURE\x1b[0m: Maximum episode duration"
-    NON_TERMINAL_SUCCESS = 7
-    NON_TERMINAL = 8
+class CheckResult(enum.Enum):
+    TERMINAL_CONTACT = "SUCCESS: Touched platform"
+    TERMINAL_SUCCESS = "SUCCESS: Goal state reached"
+    TERMINAL_FLYZONE_X = "FAILURE: Drone moved too far from platform in x direction"
+    TERMINAL_FLYZONE_Y = "FAILURE: Drone moved too far from platform in y direction"
+    TERMINAL_FLYZONE_Z = "FAILURE: Drone moved too far from platform in z direction"
+    TERMINAL_MINIMUM_ALTITUDE = "FAILURE: Reached minimum altitude"
+    TERMINAL_TIMEOUT = "FAILURE: Maximum episode duration"
+    NON_TERMINAL_SUCCESS = enum.auto()
+    NON_TERMINAL = enum.auto()
 
 
 class AbstractMdp(ABC):
@@ -342,6 +336,22 @@ class TrainingMdp(AbstractMdp):
         return self.current_discrete_state
 
     def check(self):
+        # Section 3.3.6, Section 3.4
+        # "During the training of the different curriculum steps the fol
+        # lowing episodic terminal criteria have been applied. On the
+        # one hand, the episode terminates with success and the suc-
+        # cess reward rsuc is received if the goal state s ∗ of the latest
+        # curriculum step is reached if the agent has been in that cur-
+        # riculum step’s discrete states for at least one second without
+        # interruption. This is different to all previous curriculum steps
+        # where the success reward rsuc is received immediately after
+        # reaching the goal state of the respective curriculum step"
+        # Hinting that we have to differentiate between:
+        #   - Goal condition eached non terminal.
+        #   - Goal condition reached terminal.
+        #   - Success contact
+        #   - Failure
+        # Check that you are in limits currently
         if not self.current_discrete_state:
             raise ValueError(
                 "Cannot check an empty state\n"
@@ -351,69 +361,65 @@ class TrainingMdp(AbstractMdp):
         # update other variables to perform checks
         self._step_count += 1
         # I guess touch contact has priority over everything
+        # A landing trial is considered successful
+        # if the UAV touches down
         if self.current_continuous_observation.contact:
             self.check_result = CheckResult.TERMINAL_CONTACT
-        # Section 3.3.6
-        # Discussed briefly when explaining the rewards.
-        elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
-            self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
         elif (
             self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
             or self.current_continuous_observation.rel_p_x > self.flyzone_x[1]
         ):
             self.check_result = CheckResult.TERMINAL_FLYZONE_X
+            self.info["Relative x"] = f"{self.current_continuous_observation.rel_p_x=}"
+            self.info["Fly zone x"] = f"{self.flyzone_x=}"
         elif (
             self.current_continuous_observation.rel_p_y < self.flyzone_y[0]
             or self.current_continuous_observation.rel_p_y > self.flyzone_y[1]
         ):
             self.check_result = CheckResult.TERMINAL_FLYZONE_Y
+            self.info["Relative y"] = f"{self.current_continuous_observation.rel_p_y=}"
+            self.info["Fly zone y"] = f"{self.flyzone_y=}"
+        elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
+            self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+            self.info["Relative z"] = f"{self.current_continuous_observation.abs_p_z=}"
+            self.info["Fly zone z"] = f"{self.flyzone_z=}"
         elif self.current_continuous_observation.abs_p_z > self.flyzone_z[1]:
             self.check_result = CheckResult.TERMINAL_FLYZONE_Z
+            self.info["Relative z"] = f"{self.current_continuous_observation.rel_p_y=}"
+            self.info["Fly zone z"] = f"{self.flyzone_y}"
 
         elif self._step_count >= (self.t_max * self.f_ag):
             self.check_result = CheckResult.TERMINAL_TIMEOUT
+            self.info["Timeout"] = f"{self.t_max * self.f_ag =}"
+
         # WARN: The edge case for the first state is purposefully ignored
         # due to the check being already super verbose.
         # Goal state reached, this also must be the last for how it is defined
         elif (
             self.previous_discrete_state
+            # If we can map the previou curriculum step to the current
             and self.current_discrete_state[1] == 1
             and self.current_discrete_state[2] == 1
         ):
-            # Section 3.3.6, Section 3.4
-            # They say:
-            # "During the training of the different curriculum steps the fol
-            # lowing episodic terminal criteria have been applied. On the
-            # one hand, the episode terminates with success and the suc-
-            # cess reward rsuc is received if the goal state s ∗ of the latest
-            # curriculum step is reached if the agent has been in that cur-
-            # riculum step’s discrete states for at least one second without
-            # interruption. This is different to all previous curriculum steps
-            # where the success reward rsuc is received immediately after
-            # reaching the goal state of the respective curriculum step"
-            # Hinting that we have to differentiate between:
-            #   - Goal condition eached non terminal.
-            #   - Goal condition reached terminal.
-            # Check that you are in limits currently
-
             if (
                 # You are actually at the correct curriculum step resolution level
                 self.previous_discrete_state[0] == self.working_curriculum_step
                 and self.current_discrete_state[0] == self.working_curriculum_step
                 # And you've been consistent
-                and self.previous_discrete_state[1] == 1
-                and self.previous_discrete_state[2] == 1
             ):
                 self._curriculum_check += 1
-                # If you are consistent for a whole second, then a terminal success is reached
                 if self._curriculum_check >= self.f_ag:
+                    # If you are consistent for a whole second, then a terminal success is reached
                     self.check_result = CheckResult.TERMINAL_SUCCESS
+                else:
+                    self.check_result = CheckResult.NON_TERMINAL_SUCCESS
             else:
                 # We lose all the progress made for
                 # terminal success
                 self._curriculum_check = 0
                 # However you still get a reward for being in goal
                 self.check_result = CheckResult.NON_TERMINAL_SUCCESS
+
         if (
             self.check_result == CheckResult.TERMINAL_CONTACT
             or self.check_result == CheckResult.TERMINAL_SUCCESS
@@ -424,9 +430,9 @@ class TrainingMdp(AbstractMdp):
             or self.check_result == CheckResult.TERMINAL_TIMEOUT
         ):
             self.info["Termination condition"] = self.check_result.value
-        self.info["Current step"] = self._step_count
-        self.info["Cumulative reward"] = self._cumulative_reward
-        self.info["Mean reward"] = self._cumulative_reward / self._step_count
+            self.info["Number of steps"] = self._step_count
+            self.info["Cumulative reward"] = self._cumulative_reward
+            self.info["Mean reward"] = self._cumulative_reward / self._step_count
         return self.info
 
     def reward(self) -> float:
@@ -516,14 +522,15 @@ class TrainingMdp(AbstractMdp):
             * self.limits.velocity[current_working_curriculum_step]
             * self._delta_t
         )
-
+        if self.check_result == CheckResult.NON_TERMINAL:
+            r_term = 0.0
         if (
-            self.check_result == CheckResult.NON_TERMINAL
-            or self.check_result == CheckResult.NON_TERMINAL_SUCCESS
+            self.check_result == CheckResult.NON_TERMINAL_SUCCESS
+            or self.check_result == CheckResult.TERMINAL_SUCCESS
         ):
-            r_term = self.w_fail * r_max
-        else:
             r_term = self.w_succ * r_max
+        else:
+            r_term = self.w_fail * r_max
 
         r_t = r_p + r_v + r_theta + r_dur + r_term
         # log
@@ -791,33 +798,35 @@ class SimulationMdp(AbstractMdp):
             self.check_result = CheckResult.TERMINAL_CONTACT
         # Section 3.3.6
         # Discussed briefly when explaining the rewards.
-        elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
-            self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
-            self.info["Relative z"] = self.current_continuous_observation.abs_p_z
-            self.info["Fly zone z"] = self.flyzone_z
         elif (
             self.current_continuous_observation.rel_p_x < self.flyzone_x[0]
             or self.current_continuous_observation.rel_p_x > self.flyzone_x[1]
         ):
             self.check_result = CheckResult.TERMINAL_FLYZONE_X
-            self.info["Relative x"] = self.current_continuous_observation.rel_p_x
-            self.info["Fly zone x"] = self.flyzone_x
+            self.info["Relative x"] = f"{self.current_continuous_observation.rel_p_x=}"
+            self.info["Fly zone x"] = f"{self.flyzone_x=}"
 
         elif (
             self.current_continuous_observation.rel_p_y < self.flyzone_y[0]
             or self.current_continuous_observation.rel_p_y > self.flyzone_y[1]
         ):
             self.check_result = CheckResult.TERMINAL_FLYZONE_Y
-            self.info["Relative y"] = self.current_continuous_observation.rel_p_y
-            self.info["Fly zone y"] = self.flyzone_y
+            self.info["Relative y"] = f"{self.current_continuous_observation.rel_p_y=}"
+            self.info["Fly zone y"] = f"{self.flyzone_y=}"
+        elif self.current_continuous_observation.abs_p_z < self.minimum_altitude:
+            self.check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+            self.info["Relative z"] = f"{self.current_continuous_observation.abs_p_z=}"
+            self.info["Fly zone z"] = f"{self.flyzone_z=}"
 
         elif self.current_continuous_observation.abs_p_z > self.flyzone_z[1]:
             self.check_result = CheckResult.TERMINAL_FLYZONE_Z
-            self.info["Relative z"] = self.current_continuous_observation.rel_p_y
-            self.info["Fly zone z"] = self.flyzone_y
+            self.info["Relative z"] = f"{self.current_continuous_observation.rel_p_y=}"
+            self.info["Fly zone z"] = f"{self.flyzone_y}"
 
         elif self._step_count >= (self.t_max * self.f_ag):
             self.check_result = CheckResult.TERMINAL_TIMEOUT
+            self.info["Timeout"] = f"{self.t_max * self.f_ag =}"
+
         if (
             self.check_result == CheckResult.TERMINAL_CONTACT
             or self.check_result == CheckResult.TERMINAL_FLYZONE_X
@@ -827,7 +836,7 @@ class SimulationMdp(AbstractMdp):
             or self.check_result == CheckResult.TERMINAL_TIMEOUT
         ):
             self.info["Termination condition"] = self.check_result.value
-        self.info["Current step"] = self._step_count
+            self.info["Number of steps"] = self._step_count
         return self.info
 
     def continuous_action(self, action_x: int, action_y: int):

@@ -4,6 +4,7 @@ Script contains the definition of the class defining the training environment an
 Furthermore, it registers the landing scenario as an environment in gym.
 """
 
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple, Union
 
@@ -29,17 +30,15 @@ class AbstractLandingEnv(gym.Env, ABC):
 
     def __init__(
         self,
-        f_ag: float = 22.92,
         t_max: int = 20,
+        initial_curriculum_step: int = 0,
+        *,
+        f_ag: float = 22.92,
         flyzone_x: Tuple[float, float] = (-4.5, 4.5),
         flyzone_y: Tuple[float, float] = (-4.5, 4.5),
         flyzone_z: Tuple[float, float] = (0, 9),
         z_init: float = 2.0,
-        *,
-        initial_curriculum_step: int = 0,
     ):
-        # region Ros Boilerplate
-        rospy.init_node("landing_simulation_gym_node")
         # Setup publishers
         self.action_to_interface_publisher = get_publisher(
             "training_action_interface/action_to_interface", Action, queue_size=0
@@ -81,6 +80,20 @@ class AbstractLandingEnv(gym.Env, ABC):
         self.flyzone_z = flyzone_z
         self.z_init = z_init
 
+    def close(self):
+        self.model_coordinates.close()
+        self.unpause_sim.close()
+        self.pause_sim.close()
+        self.set_model_state_service.close()
+        self.reset_world_gazebo_service.close()
+
+        self.observation_continuous_subscriber.unregister()
+
+        self.action_to_interface_publisher.unregister()
+        self.reset_simulation_publisher.unregister()
+        # Wait some time so that changes are in effect
+        time.sleep(2)
+
     def read_training_continuous_observations(self, observation: Observation):
         self.observation = observation
 
@@ -98,9 +111,6 @@ class AbstractLandingEnv(gym.Env, ABC):
     def get_robot_absolute_altitude(self, drone):
         abs_v_z = drone.pose.position.z
         return abs_v_z
-
-    @abstractmethod
-    def set_curriculum_step(self, curriculum_step: int): ...
 
     @abstractmethod
     def reset(
@@ -127,38 +137,26 @@ class AbstractLandingEnv(gym.Env, ABC):
 class TrainingLandingEnv(AbstractLandingEnv):
     def __init__(
         self,
-        f_ag: float = 22.92,
         t_max: int = 20,
+        initial_curriculum_step: int = 0,
+        *,
+        f_ag: float = 22.92,
         flyzone_x: Tuple[float, float] = (-4.5, 4.5),
         flyzone_y: Tuple[float, float] = (-4.5, 4.5),
         flyzone_z: Tuple[float, float] = (0, 9),
-        z_init: float = 4,
-        *,
-        initial_curriculum_step: int = 0,
+        z_init: float = 2.0,
     ):
         super().__init__(
-            f_ag,
-            t_max,
-            flyzone_x,
-            flyzone_y,
-            flyzone_z,
-            z_init,
+            t_max=t_max,
             initial_curriculum_step=initial_curriculum_step,
+            f_ag=f_ag,
+            flyzone_x=flyzone_x,
+            flyzone_y=flyzone_y,
+            flyzone_z=flyzone_z,
+            z_init=z_init,
         )
         self.mdp = TrainingMdp(
             initial_curriculum_step,
-            self.f_ag,
-            self.t_max,
-            self.flyzone_x,
-            self.flyzone_y,
-            self.flyzone_z,
-        )
-
-    def set_curriculum_step(self, curriculum_step: int):
-        self.current_curriculum_step = curriculum_step
-        # TODO: Maybe implement set_curriculum_step
-        self.mdp = TrainingMdp(
-            curriculum_step,
             self.f_ag,
             self.t_max,
             self.flyzone_x,
@@ -275,7 +273,7 @@ class TrainingLandingEnv(AbstractLandingEnv):
 
         info = self.mdp.check()
         reward = self.mdp.reward()
-        info["Curent reward"] = reward
+        info["Current reward"] = reward
         return (
             discrete_observation,
             reward,
@@ -287,58 +285,25 @@ class TrainingLandingEnv(AbstractLandingEnv):
 class SimulationLandingEnv(AbstractLandingEnv):
     def __init__(
         self,
-        f_ag: float = 22.92,
         t_max: int = 20,
-        flyzone_x: Tuple[float, float] = (-9, 9),
-        flyzone_y: Tuple[float, float] = (-9, 9),
-        flyzone_z: Tuple[float, float] = (0, 9),
-        z_init: float = 4,
-        *,
         initial_curriculum_step: int = 0,
+        *,
+        f_ag: float = 22.92,
+        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
+        flyzone_z: Tuple[float, float] = (0, 9),
+        z_init: float = 2.0,
     ):
-        # super().__init__(
-        #     f_ag,
-        #     t_max,
-        #     flyzone_x,
-        #     flyzone_y,
-        #     flyzone_z,
-        #     z_init,
-        #     initial_curriculum_step=initial_curriculum_step,
-        # )
-        # region Ros Boilerplate
-        rospy.init_node("landing_simulation_gym_node")
-        # Setup publishers
-        self.action_to_interface_publisher = get_publisher(
-            "training_action_interface/action_to_interface", Action, queue_size=0
-        )
-        self.reset_simulation_publisher = get_publisher(
-            "training/reset_simulation", Bool, queue_size=0
-        )
-        # Setup subscribers
-        self.observation_continuous_subscriber = rospy.Subscriber(
-            "/hummingbird/training_observation_interface/observations",
-            Observation,
-            self.read_training_continuous_observations,
+        super().__init__(
+            t_max=t_max,
+            initial_curriculum_step=initial_curriculum_step,
+            f_ag=f_ag,
+            flyzone_x=flyzone_x,
+            flyzone_y=flyzone_y,
+            flyzone_z=flyzone_z,
+            z_init=z_init,
         )
 
-        # Set up services
-        rospy.wait_for_service("/gazebo/reset_world")
-        self.reset_world_gazebo_service = rospy.ServiceProxy(
-            "/gazebo/reset_world", Empty
-        )
-        rospy.wait_for_service("/gazebo/set_model_state")
-        self.set_model_state_service = rospy.ServiceProxy(
-            "/gazebo/set_model_state", SetModelState
-        )
-        rospy.wait_for_service("/gazebo/pause_physics")
-        self.pause_sim = rospy.ServiceProxy("/gazebo/pause_physics", Empty)
-        rospy.wait_for_service("/gazebo/unpause_physics")
-        self.unpause_sim = rospy.ServiceProxy("/gazebo/unpause_physics", Empty)
-        rospy.wait_for_service("/gazebo/get_model_state")
-        self.model_coordinates = rospy.ServiceProxy(
-            "/gazebo/get_model_state", GetModelState
-        )
-        # endregion
         # Other variables needed during execution
         self.current_curriculum_step = initial_curriculum_step
         self.f_ag = f_ag
@@ -356,18 +321,6 @@ class SimulationLandingEnv(AbstractLandingEnv):
             self.flyzone_z,
         )
 
-    def set_curriculum_step(self, curriculum_step: int):
-        self.current_curriculum_step = curriculum_step
-        # TODO: Maybe implement set_curriculum_step
-        self.mdp = SimulationMdp(
-            curriculum_step,
-            self.f_ag,
-            self.t_max,
-            self.flyzone_x,
-            self.flyzone_y,
-            self.flyzone_z,
-        )
-
     def reset(
         self,
     ) -> Tuple[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]]:
@@ -376,7 +329,7 @@ class SimulationLandingEnv(AbstractLandingEnv):
         self.mdp.reset()
 
         # Pause simulation
-        self.reset_world_gazebo_service()
+        # self.reset_world_gazebo_service()
         self.pause_sim()
         moving_platform = self.model_coordinates("moving_platform", "world")
         # Initialize drone state
@@ -391,8 +344,16 @@ class SimulationLandingEnv(AbstractLandingEnv):
         y_init = np.random.uniform(self.flyzone_y[0], self.flyzone_y[1])
 
         # Clip to stay within fly zone
-        initial_drone.pose.position.x = 0
-        initial_drone.pose.position.y = 0
+        initial_drone.pose.position.x = np.clip(
+            moving_platform.pose.position.x - x_init,
+            self.flyzone_x[0],
+            self.flyzone_x[1],
+        )
+        initial_drone.pose.position.y = np.clip(
+            moving_platform.pose.position.y - y_init,
+            self.flyzone_y[0],
+            self.flyzone_y[1],
+        )
         initial_drone.pose.position.z = self.z_init
         # Section 3.12:
         # Each landing trial will begin with the UAV being in hover state,
@@ -484,10 +445,10 @@ class SimulationLandingEnv(AbstractLandingEnv):
 
 
 # Register the training environment in gym as an available one
-# register(
-#     id="Landing-Training-v0",
-#     entry_point="dql_multirotor_landing.landing_simulation_env:TrainingLandingEnv",
-# )
+register(
+    id="Landing-Training-v0",
+    entry_point="dql_multirotor_landing.landing_simulation_env:TrainingLandingEnv",
+)
 register(
     id="Landing-Simulation-v0",
     entry_point="dql_multirotor_landing.landing_simulation_env:SimulationLandingEnv",
