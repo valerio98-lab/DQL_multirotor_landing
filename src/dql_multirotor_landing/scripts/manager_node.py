@@ -224,6 +224,16 @@ class ManagerNode:
         )
 
     def publish_obs(self, drone_tf, mp_tf):
+        """
+        Main function for updating and publishing the state of the drone and moving platform.
+        - Computes and publish a new trajectory setpoint for the moving platform 
+        - Computes and publishes the relative position and velocity between drone and platform
+        - Computes and publishes the relative roll, pitch, and yaw angles for PID control
+        - Computes and publishes observation data from RL env
+
+        :param drone_tf: Drone state in the target frame.
+        :param mp_tf: Moving platform state in the target frame.
+        """
         # Update the moving platform state
         pose, u, v = self.moving_platform.update()
         self._publish_trajectory(pose, u, v)

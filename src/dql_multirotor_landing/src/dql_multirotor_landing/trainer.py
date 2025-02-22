@@ -205,7 +205,7 @@ class Trainer:
             env.close()
             self.save()
 
-    def log(self, info: Dict[str, Any], clean=False):
+    def log(self, info: Dict[str, Any], clean=True):
         # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
         # Clear screen and return to the left corner
         # TERMINAL_CONTACT = "\x1b[1;32mSUCCESS\x1b[0m: Touched platform"

@@ -11,7 +11,7 @@ from dql_multirotor_landing.trainer import Trainer
 
 INITIAL_CURRICULUM_STEP = 0
 if __name__ == "__main__":
-    rospy.init_node("landing_simulation_gym_node")
+    rospy.init_node("training_node")
     trainer = Trainer(
         max_num_episodes=50000, initial_curriculum_step=INITIAL_CURRICULUM_STEP
     )

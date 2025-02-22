@@ -2,7 +2,7 @@
 <robot name = "moving_platform">
 
   <material name="red">
-    <color rgba= "1 0 0 1"/>
+    <color rgba= "0 0 0 1"/>
   </material> 
   
   <!-- Create world link -->
