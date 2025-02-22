@@ -1,5 +1,6 @@
 """Module containing the definition for the trainer."""
 
+import math
 import pickle
 from collections import deque
 from datetime import datetime
@@ -61,7 +62,7 @@ class Trainer:
 
         self._seed = seed
         self._current_episode = 0
-        self._working_curriculun_step = initial_curriculum_step
+        self._working_curriculum_step = initial_curriculum_step
         self._exploration_rate = 0.0
         self._curriculum_episode_count = 0
         self._successes = deque([], maxlen=successive_successful_episodes)
@@ -75,12 +76,12 @@ class Trainer:
         self._alpha = float(
             np.max(
                 [
-                    (1 / (counter)) ** self._omega,
+                    np.float_power(1 / (counter), self._omega),
                     self._alpha_min,
                 ]
             )
         )
-        if self._alpha == float("nan"):
+        if math.isnan(self._alpha):
             raise ValueError(
                 f"Leaning rate cannot be NaN, {counter}, {self._omega}, {self._alpha_min}"
             )
@@ -139,7 +140,9 @@ class Trainer:
     def curriculum_training(
         self,
     ):
-        for self._working_curriculum_step in range(self._curriculum_steps):
+        for self._working_curriculum_step in range(
+            self._working_curriculum_step, self._curriculum_steps
+        ):
             env: TrainingLandingEnv = gym.make(
                 "Landing-Training-v0",
                 t_max=self.t_max,
@@ -161,9 +164,6 @@ class Trainer:
                     )
                     next_state, reward, done, info = env.step(action)
                     current_state_action = current_state + (action,)
-                    self.double_q_learning_agent.state_action_counter[
-                        current_state_action
-                    ] += 1
                     self.double_q_learning_agent.update(
                         current_state_action,
                         next_state,

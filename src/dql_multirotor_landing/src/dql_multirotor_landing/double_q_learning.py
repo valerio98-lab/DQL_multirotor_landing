@@ -42,17 +42,6 @@ class DoubleQLearningAgent:
         qa_path = save_path / "Q_table_a.npy"
         qb_path = save_path / "Q_table_b.npy"
         sac_path = save_path / "state_action_count.npy"
-        # warn = "Found:\n"
-        # if qa_path.exists():
-        #     warn += str(qa_path) + "\n"
-        # if qb_path.exists():
-        #     warn += str(qb_path) + "\n"
-        # if sac_path.exists():
-        #     warn += str(sac_path) + "\n"
-        # if warn != "Found:\n":
-        #     self.check = (
-        #         input(warn + "type [y] to overwrite or anything else to abort") == "y"
-        # )
         if self.check:
             with open(qa_path, "wb") as f:
                 np.save(f, self.Q_table_a)
@@ -84,7 +73,9 @@ class DoubleQLearningAgent:
     def insert_curriculum_step(self, curriculum_step: int):
         self.Q_table_a = np.insert(self.Q_table_a, curriculum_step, 0.0, 0)
         self.Q_table_b = np.insert(self.Q_table_a, curriculum_step, 0.0, 0)
-        self.state_action_counter = np.insert(self.Q_table_a, curriculum_step, 0.0, 0)
+        self.state_action_counter = np.insert(
+            self.state_action_counter, curriculum_step, 0.0, 0
+        )
 
     def transfer_learning(
         self,
@@ -107,6 +98,7 @@ class DoubleQLearningAgent:
         reward,
     ):
         # Choose the action to follow
+        self.state_action_counter[current_state_action] += 1
         self._update_q_table(
             self.Q_table_a if np.random.uniform(0, 1) < 0.5 else self.Q_table_a,
             current_state_action,
