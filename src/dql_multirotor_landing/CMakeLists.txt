@@ -163,7 +163,7 @@ include_directories(
 catkin_install_python(PROGRAMS
   scripts/manager_node.py
   scripts/training.py
-  scripts/test.py
+  scripts/simulation.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

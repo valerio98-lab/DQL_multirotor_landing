@@ -6,4 +6,7 @@ screen -dmS env_launch bash -c "roslaunch dql_multirotor_landing landing_simulat
 
 sleep 5
 
-roslaunch dql_multirotor_landing training.launch
+roslaunch dql_multirotor_landing simulation.launch
+rosnode kill -a
+rosnode cleanup
+killall rosmaster

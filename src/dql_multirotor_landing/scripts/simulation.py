@@ -39,7 +39,7 @@ if __name__ == "__main__":
         else:
             print("=" * 80)
 
-    for current_episode in range(30):
+    for current_episode in range(10):
         current_state_x, current_state_y = env.reset()
 
         done = False
@@ -51,11 +51,7 @@ if __name__ == "__main__":
 
             if done:
                 info["current_episode"] = current_episode
-                print("=" * 80)
-                for k, v in info.items():
-                    print(f"{k}: {v}")
-                print("=" * 80)
-                env.pause_sim()
+                log(info)
                 break
             current_state_x = next_state_x
             current_state_y = next_state_y

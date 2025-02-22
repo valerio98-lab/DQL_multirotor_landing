@@ -13,7 +13,9 @@ INITIAL_CURRICULUM_STEP = 0
 if __name__ == "__main__":
     rospy.init_node("training_node")
     trainer = Trainer(
-        max_num_episodes=50000, initial_curriculum_step=INITIAL_CURRICULUM_STEP
+        max_num_episodes=20,
+        initial_curriculum_step=INITIAL_CURRICULUM_STEP,
+        successive_successful_episodes=10,
     )
     trainer.curriculum_training()
     rospy.signal_shutdown("Training ended sucessfully")

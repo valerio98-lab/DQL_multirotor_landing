@@ -97,9 +97,7 @@ class AbstractMdp(ABC):
         working_curriculum_step: int,
         f_ag: float,
         t_max: int,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_z: Tuple[float, float] = (0, 9),
+        p_max: float = 4.5,
         *,
         w_p: float = -100.0,
         w_v: float = -10.0,
@@ -108,7 +106,6 @@ class AbstractMdp(ABC):
         w_fail: float = -2.6,
         w_succ: float = 2.6,
         n_theta: int = 3,
-        p_max: float = 4.5,
         v_max: float = 3.39411,
         a_max: float = 1.28,
         theta_max: float = np.deg2rad(21.37723),
@@ -120,9 +117,9 @@ class AbstractMdp(ABC):
         self.working_curriculum_step = working_curriculum_step
         self.f_ag = f_ag
         self.t_max = t_max
-        self.flyzone_x = flyzone_x
-        self.flyzone_y = flyzone_y
-        self.flyzone_z = flyzone_z
+        self.flyzone_x = (-p_max, p_max)
+        self.flyzone_y = (-p_max, p_max)
+        self.flyzone_z = (0.0, p_max)
         self.w_p = w_p
         self.w_v = w_v
         self.w_theta = w_theta
@@ -213,9 +210,6 @@ class TrainingMdp(AbstractMdp):
         working_curriculum_step: int,
         f_ag: float,
         t_max: int,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_z: Tuple[float, float] = (0, 9),
         *,
         w_p: float = -100,
         w_v: float = -10,
@@ -237,9 +231,6 @@ class TrainingMdp(AbstractMdp):
             working_curriculum_step,
             f_ag,
             t_max,
-            flyzone_x,
-            flyzone_y,
-            flyzone_z,
             w_p=w_p,
             w_v=w_v,
             w_theta=w_theta,
@@ -387,7 +378,6 @@ class TrainingMdp(AbstractMdp):
             self.check_result = CheckResult.TERMINAL_FLYZONE_Z
             self.info["Relative z"] = f"{self.current_continuous_observation.rel_p_y=}"
             self.info["Fly zone z"] = f"{self.flyzone_y}"
-
         elif self._step_count >= (self.t_max * self.f_ag):
             self.check_result = CheckResult.TERMINAL_TIMEOUT
             self.info["Timeout"] = f"{self.t_max * self.f_ag =}"
@@ -411,15 +401,14 @@ class TrainingMdp(AbstractMdp):
                 if self._curriculum_check >= self.f_ag:
                     # If you are consistent for a whole second, then a terminal success is reached
                     self.check_result = CheckResult.TERMINAL_SUCCESS
-                else:
-                    self.check_result = CheckResult.NON_TERMINAL_SUCCESS
+                # else:
+                #     self.check_result = CheckResult.NON_TERMINAL_SUCCESS
             else:
                 # We lose all the progress made for
                 # terminal success
                 self._curriculum_check = 0
                 # However you still get a reward for being in goal
-                self.check_result = CheckResult.NON_TERMINAL_SUCCESS
-
+                # self.check_result = CheckResult.NON_TERMINAL_SUCCESS
         if (
             self.check_result == CheckResult.TERMINAL_CONTACT
             or self.check_result == CheckResult.TERMINAL_SUCCESS
@@ -574,16 +563,13 @@ class SimulationMdp(AbstractMdp):
 
     current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
     previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
-    _current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
+    _current_continuous_action = Action(pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1)
 
     def __init__(
         self,
         working_curriculum_step: int,
         f_ag: float,
         t_max: int,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_z: Tuple[float, float] = (0, 9),
         *,
         w_p: float = -100,
         w_v: float = -10,
@@ -605,9 +591,6 @@ class SimulationMdp(AbstractMdp):
             working_curriculum_step,
             f_ag,
             t_max,
-            flyzone_x,
-            flyzone_y,
-            flyzone_z,
             w_p=w_p,
             w_v=w_v,
             w_theta=w_theta,
@@ -877,4 +860,6 @@ class SimulationMdp(AbstractMdp):
         self.previous_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
         self.current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
         self.previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
-        self._current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.1)
+        self._current_continuous_action = Action(
+            pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1
+        )

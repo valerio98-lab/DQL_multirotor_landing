@@ -70,13 +70,6 @@ class DoubleQLearningAgent:
         agent.state_action_counter = sac
         return agent
 
-    def insert_curriculum_step(self, curriculum_step: int):
-        self.Q_table_a = np.insert(self.Q_table_a, curriculum_step, 0.0, 0)
-        self.Q_table_b = np.insert(self.Q_table_a, curriculum_step, 0.0, 0)
-        self.state_action_counter = np.insert(
-            self.state_action_counter, curriculum_step, 0.0, 0
-        )
-
     def transfer_learning(
         self,
         current_curriculum_step: int,

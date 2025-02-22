@@ -1,10 +1,8 @@
 #! /usr/bin/python3
 """
-Script contains the definition of the class defining the training environment and some of its interfaces to other ros nodes.
-Furthermore, it registers the landing scenario as an environment in gym.
+Definition and creation of simulation environment
 """
 
-import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Tuple, Union
 
@@ -24,9 +22,10 @@ from dql_multirotor_landing.utils import get_publisher  # type: ignore
 
 
 class AbstractLandingEnv(gym.Env, ABC):
-    observation: Observation = Observation()
-    cumulative_reward: float = 0.0
-    number_of_steps: int = 0
+    """Abstract class fo he environment."""
+
+    _observation: Observation = Observation()
+    """Current observation coming from the the `manager_node`"""
 
     def __init__(
         self,
@@ -34,68 +33,78 @@ class AbstractLandingEnv(gym.Env, ABC):
         initial_curriculum_step: int = 0,
         *,
         f_ag: float = 22.92,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_z: Tuple[float, float] = (0, 9),
+        p_max: float = 4.5,
         z_init: float = 2.0,
     ):
         # Setup publishers
-        self.action_to_interface_publisher = get_publisher(
+        self._action_publisher = get_publisher(
             "action_to_interface", Action, queue_size=0
         )
-        self.reset_simulation_publisher = get_publisher(
-            "reset_simulation", Bool, queue_size=0
-        )
+        """Publishes current action to perform to `manager_node`"""
+        self._reset_publisher = get_publisher("reset_simulation", Bool, queue_size=0)
+        """Publishes the end of the current episode to `manager_node`"""
         # Setup subscribers
-        self.observation_continuous_subscriber = rospy.Subscriber(
+        self._observation_subscriber = rospy.Subscriber(
             "/hummingbird/observations",
             Observation,
             self.read_training_continuous_observations,
         )
+        """Subscribe to the current observation coming from the `manager_node`"""
 
         # Set up services
         rospy.wait_for_service("/gazebo/reset_world")
-        self.reset_world_gazebo_service = rospy.ServiceProxy(
+        self._reset_world_gazebo_service = rospy.ServiceProxy(
             "/gazebo/reset_world", Empty
         )
+        """Service for resetting the world in gazebo"""
         rospy.wait_for_service("/gazebo/set_model_state")
-        self.set_model_state_service = rospy.ServiceProxy(
+        self._set_model_state_service = rospy.ServiceProxy(
             "/gazebo/set_model_state", SetModelState
         )
         rospy.wait_for_service("/gazebo/pause_physics")
-        self.pause_sim = rospy.ServiceProxy("/gazebo/pause_physics", Empty)
+        self._pause_sim = rospy.ServiceProxy("/gazebo/pause_physics", Empty)
+        """Service for pausing the simulation in gazebo"""
+
         rospy.wait_for_service("/gazebo/unpause_physics")
-        self.unpause_sim = rospy.ServiceProxy("/gazebo/unpause_physics", Empty)
+        self._unpause_sim = rospy.ServiceProxy("/gazebo/unpause_physics", Empty)
+        """Service for unpausing the simulation in gazebo"""
+
         rospy.wait_for_service("/gazebo/get_model_state")
-        self.model_coordinates = rospy.ServiceProxy(
+        self._model_coordinates = rospy.ServiceProxy(
             "/gazebo/get_model_state", GetModelState
         )
-        # endregion
+        """Service for getting model informations from gazebo"""
+
         # Other variables needed during execution
-        self.current_curriculum_step = initial_curriculum_step
-        self.f_ag = f_ag
-        self.t_max = t_max
-        self.flyzone_x = flyzone_x
-        self.flyzone_y = flyzone_y
-        self.flyzone_z = flyzone_z
-        self.z_init = z_init
+        self._working_curriculum_step = initial_curriculum_step
+        """Curriculum step in which we're working, it's zero indexed"""
+        self._t_max = t_max
+        """Maximum simulation time in seconds"""
+        self._f_ag = f_ag
+        """Agent frequency of decision making"""
+        self._flyzone_x = (-p_max, p_max)
+        """Maximum distance from the platform in the x direction"""
+        self._flyzone_y = (-p_max, p_max)
+        """Maximum distance from the platform in the y direction"""
+        self._flyzone_z = (0.0, p_max)
+        """Maximum distance from the platform in the y direction"""
+        self._z_init = z_init
+        """Initial height"""
 
     def close(self):
-        self.model_coordinates.close()
-        self.unpause_sim.close()
-        self.pause_sim.close()
-        self.set_model_state_service.close()
-        self.reset_world_gazebo_service.close()
+        self._model_coordinates.close()
+        self._unpause_sim.close()
+        self._pause_sim.close()
+        self._set_model_state_service.close()
+        self._reset_world_gazebo_service.close()
 
-        self.observation_continuous_subscriber.unregister()
+        self._observation_subscriber.unregister()
 
-        self.action_to_interface_publisher.unregister()
-        self.reset_simulation_publisher.unregister()
-        # Wait some time so that changes are in effect
-        time.sleep(2)
+        self._action_publisher.unregister()
+        self._reset_publisher.unregister()
 
     def read_training_continuous_observations(self, observation: Observation):
-        self.observation = observation
+        self._observation = observation
 
     def get_robot_rotation(self, drone) -> Tuple[float, float, float]:
         roll, pitch, yaw = euler_from_quaternion(
@@ -141,36 +150,30 @@ class TrainingLandingEnv(AbstractLandingEnv):
         initial_curriculum_step: int = 0,
         *,
         f_ag: float = 22.92,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_z: Tuple[float, float] = (0, 9),
+        p_max: float = 4.5,
         z_init: float = 2.0,
     ):
         super().__init__(
             t_max=t_max,
             initial_curriculum_step=initial_curriculum_step,
             f_ag=f_ag,
-            flyzone_x=flyzone_x,
-            flyzone_y=flyzone_y,
-            flyzone_z=flyzone_z,
+            p_max=p_max,
             z_init=z_init,
         )
-        self.mdp = TrainingMdp(
+        self._mdp = TrainingMdp(
             initial_curriculum_step,
-            self.f_ag,
-            self.t_max,
-            self.flyzone_x,
-            self.flyzone_y,
-            self.flyzone_z,
+            self._f_ag,
+            self._t_max,
         )
+        """Underlying Markov decision process"""
 
     def reset(self) -> Tuple[int, int, int, int, int]:
         # Reset the setpoints for the low-level controllers of the copter
-        self.mdp.reset()
+        self._mdp.reset()
 
         # Pause simulation
-        self.pause_sim()
-        moving_platform = self.model_coordinates("moving_platform", "world")
+        self._pause_sim()
+        moving_platform = self._model_coordinates("moving_platform", "world")
         # Initialize drone state
         initial_drone = ModelState()
         initial_drone.model_name = "hummingbird"
@@ -178,7 +181,7 @@ class TrainingLandingEnv(AbstractLandingEnv):
         # "we use the following normal distribution to determine the UAV’s
         # initial position within the fly zone during
         # the first curriculum step"
-        if self.current_curriculum_step == 0:
+        if self._working_curriculum_step == 0:
             # This value doens't seem to be discussed directly in the paper.
             # However hey do say (still in Section 4.3):
             # "UAV is initialized close to the center of the
@@ -186,19 +189,19 @@ class TrainingLandingEnv(AbstractLandingEnv):
             # platform more frequently."
             # Leading to thing that this choice of mu is coherent
             mu = 0
-            sigma = self.mdp.p_max / 3
+            sigma = self._mdp.p_max / 3
             x_init = np.random.normal(mu, sigma)
         else:
-            x_init = np.random.uniform(self.flyzone_x[0], self.flyzone_x[1])
+            x_init = np.random.uniform(self._flyzone_x[0], self._flyzone_x[1])
 
         # Clip to stay within fly zone
         initial_drone.pose.position.x = np.clip(
             x_init + moving_platform.pose.position.x,
-            moving_platform.pose.position.x + self.flyzone_x[0],
-            moving_platform.pose.position.x + self.flyzone_x[1],
+            moving_platform.pose.position.x + self._flyzone_x[0],
+            moving_platform.pose.position.x + self._flyzone_x[1],
         )
         initial_drone.pose.position.y = 0.0
-        initial_drone.pose.position.z = self.z_init
+        initial_drone.pose.position.z = self._z_init
         # Section 3.12:
         # Each landing trial will begin with the UAV being in hover state,
         # leading to the following initial conditions for rotational movement
@@ -213,16 +216,16 @@ class TrainingLandingEnv(AbstractLandingEnv):
         initial_drone.pose.orientation.z = 0
         initial_drone.pose.orientation.w = 1.0
 
-        self.set_model_state_service(initial_drone)
+        self._set_model_state_service(initial_drone)
 
-        self.reset_simulation_publisher.publish(Bool(True))
+        self._reset_publisher.publish(Bool(True))
         # Let simulation update values
-        self.unpause_sim()
-        rospy.sleep(1 / self.f_ag)
-        self.pause_sim()
+        self._unpause_sim()
+        rospy.sleep(1 / self._f_ag)
+        self._pause_sim()
         # Save temporarily the current continuous state to avoid sinchronization issues
         # due to callbacks
-        drone = self.model_coordinates("hummingbird", "world")
+        drone = self._model_coordinates("hummingbird", "world")
         roll, pitch, _ = euler_from_quaternion(
             quaternion=[
                 drone.pose.orientation.x,
@@ -233,9 +236,9 @@ class TrainingLandingEnv(AbstractLandingEnv):
         )
         abs_v_z = drone.pose.position.z
         observation_continuous = ContinuousObservation(
-            self.observation, pitch, roll, abs_v_z
+            self._observation, pitch, roll, abs_v_z
         )
-        observation_x = self.mdp.discrete_state(
+        observation_x = self._mdp.discrete_state(
             observation_continuous,
         )
         return observation_x  # type: ignore
@@ -245,17 +248,17 @@ class TrainingLandingEnv(AbstractLandingEnv):
 
         # Update the setpoints based on the current action and publish them to the ROS network
 
-        continuous_action = self.mdp.continuous_action(action_x, action_y)
+        continuous_action = self._mdp.continuous_action(action_x, action_y)
 
-        self.action_to_interface_publisher.publish(continuous_action)
+        self._action_publisher.publish(continuous_action)
 
         # Let the simulation run for one RL timestep and allow to recieve obsevation
-        self.unpause_sim()
-        rospy.sleep(1 / self.f_ag)
-        self.pause_sim()
+        self._unpause_sim()
+        rospy.sleep(1 / self._f_ag)
+        self._pause_sim()
 
         # Map the current observation to a discrete state value
-        drone = self.model_coordinates("hummingbird", "world")
+        drone = self._model_coordinates("hummingbird", "world")
         roll, pitch, _ = euler_from_quaternion(
             quaternion=[
                 drone.pose.orientation.x,
@@ -266,13 +269,13 @@ class TrainingLandingEnv(AbstractLandingEnv):
         )
         abs_v_z = drone.pose.position.z
         observation_continuous = ContinuousObservation(
-            self.observation, pitch, roll, abs_v_z
+            self._observation, pitch, roll, abs_v_z
         )
 
-        discrete_observation = self.mdp.discrete_state(observation_continuous)
+        discrete_observation = self._mdp.discrete_state(observation_continuous)
 
-        info = self.mdp.check()
-        reward = self.mdp.reward()
+        info = self._mdp.check()
+        reward = self._mdp.reward()
         info["Current reward"] = reward
         return (
             discrete_observation,
@@ -289,36 +292,20 @@ class SimulationLandingEnv(AbstractLandingEnv):
         initial_curriculum_step: int = 0,
         *,
         f_ag: float = 22.92,
-        flyzone_x: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_y: Tuple[float, float] = (-4.5, 4.5),
-        flyzone_z: Tuple[float, float] = (0, 9),
-        z_init: float = 2.0,
+        p_max: float = 4.5,
+        z_init: float = 4.0,
     ):
         super().__init__(
             t_max=t_max,
             initial_curriculum_step=initial_curriculum_step,
             f_ag=f_ag,
-            flyzone_x=flyzone_x,
-            flyzone_y=flyzone_y,
-            flyzone_z=flyzone_z,
+            p_max=p_max,
             z_init=z_init,
         )
-
-        # Other variables needed during execution
-        self.current_curriculum_step = initial_curriculum_step
-        self.f_ag = f_ag
-        self.t_max = t_max
-        self.flyzone_x = flyzone_x
-        self.flyzone_y = flyzone_y
-        self.flyzone_z = flyzone_z
-        self.z_init = z_init
-        self.mdp = SimulationMdp(
+        self._mdp = SimulationMdp(
             initial_curriculum_step,
-            self.f_ag,
-            self.t_max,
-            self.flyzone_x,
-            self.flyzone_y,
-            self.flyzone_z,
+            self._f_ag,
+            self._t_max,
         )
 
     def reset(
@@ -326,12 +313,12 @@ class SimulationLandingEnv(AbstractLandingEnv):
     ) -> Tuple[Tuple[int, int, int, int, int], Tuple[int, int, int, int, int]]:
         # Reset the setpoints for the low-level controllers of the copter
 
-        self.mdp.reset()
+        self._mdp.reset()
 
         # Pause simulation
-        # self.reset_world_gazebo_service()
-        self.pause_sim()
-        moving_platform = self.model_coordinates("moving_platform", "world")
+        # self._reset_world_gazebo_service()
+        self._pause_sim()
+        moving_platform = self._model_coordinates("moving_platform", "world")
         # Initialize drone state
         initial_drone = ModelState()
         initial_drone.model_name = "hummingbird"
@@ -340,21 +327,21 @@ class SimulationLandingEnv(AbstractLandingEnv):
         # initial position within the fly zone during
         # the first curriculum step"
 
-        x_init = np.random.uniform(self.flyzone_x[0], self.flyzone_x[1])
-        y_init = np.random.uniform(self.flyzone_y[0], self.flyzone_y[1])
+        x_init = np.random.uniform(self._flyzone_x[0], self._flyzone_x[1])
+        y_init = np.random.uniform(self._flyzone_y[0], self._flyzone_y[1])
 
         # Clip to stay within fly zone
         initial_drone.pose.position.x = np.clip(
             moving_platform.pose.position.x - x_init,
-            self.flyzone_x[0],
-            self.flyzone_x[1],
+            self._flyzone_x[0],
+            self._flyzone_x[1],
         )
         initial_drone.pose.position.y = np.clip(
             moving_platform.pose.position.y - y_init,
-            self.flyzone_y[0],
-            self.flyzone_y[1],
+            self._flyzone_y[0],
+            self._flyzone_y[1],
         )
-        initial_drone.pose.position.z = self.z_init
+        initial_drone.pose.position.z = self._z_init
         # Section 3.12:
         # Each landing trial will begin with the UAV being in hover state,
         # leading to the following initial conditions for rotational movement
@@ -369,21 +356,21 @@ class SimulationLandingEnv(AbstractLandingEnv):
         initial_drone.pose.orientation.z = 0
         initial_drone.pose.orientation.w = 1.0
 
-        self.set_model_state_service(initial_drone)
+        self._set_model_state_service(initial_drone)
 
         # Reset episode counters and logging variables
         self.step_number_in_episode = 0
         self.episode_reward = 0
         self.done_numeric = 0
 
-        self.reset_simulation_publisher.publish(Bool(True))
+        self._reset_publisher.publish(Bool(True))
         # Let simulation update values
-        self.unpause_sim()
-        rospy.sleep(1 / self.f_ag)
-        self.pause_sim()
+        self._unpause_sim()
+        rospy.sleep(1 / self._f_ag)
+        self._pause_sim()
         # Save temporarily the current continuous state to avoid sinchronization issues
         # due to callbacks
-        drone = self.model_coordinates("hummingbird", "world")
+        drone = self._model_coordinates("hummingbird", "world")
         roll, pitch, _ = euler_from_quaternion(
             quaternion=[
                 drone.pose.orientation.x,
@@ -395,29 +382,29 @@ class SimulationLandingEnv(AbstractLandingEnv):
         abs_v_z = drone.pose.position.z
 
         observation_continuous = ContinuousObservation(
-            self.observation, pitch, roll, abs_v_z
+            self._observation, pitch, roll, abs_v_z
         )
-        observation_x, observation_y = self.mdp.discrete_state(
+        observation_x, observation_y = self._mdp.discrete_state(
             observation_continuous,
         )
         return (observation_x, observation_y)
 
-    def step(self, action_x: int, action_y: int = 2):  # type: ignore
+    def step(self, action_x: int, action_y: int):  # type: ignore
         """Function performs one timestep of the training."""
 
         # Update the setpoints based on the current action and publish them to the ROS network
 
-        continuous_action = self.mdp.continuous_action(action_x, action_y)
+        continuous_action = self._mdp.continuous_action(action_x, action_y)
 
-        self.action_to_interface_publisher.publish(continuous_action)
+        self._action_publisher.publish(continuous_action)
 
         # Let the simulation run for one RL timestep and allow to recieve obsevation
-        self.unpause_sim()
-        rospy.sleep(1 / self.f_ag)
-        self.pause_sim()
+        self._unpause_sim()
+        rospy.sleep(1 / self._f_ag)
+        self._pause_sim()
 
         # Map the current observation to a discrete state value
-        drone = self.model_coordinates("hummingbird", "world")
+        drone = self._model_coordinates("hummingbird", "world")
         roll, pitch, _ = euler_from_quaternion(
             quaternion=[
                 drone.pose.orientation.x,
@@ -428,14 +415,14 @@ class SimulationLandingEnv(AbstractLandingEnv):
         )
         abs_v_z = drone.pose.position.z
         observation_continuous = ContinuousObservation(
-            self.observation, pitch, roll, abs_v_z
+            self._observation, pitch, roll, abs_v_z
         )
 
-        discrete_observation_x, discrete_observation_y = self.mdp.discrete_state(
+        discrete_observation_x, discrete_observation_y = self._mdp.discrete_state(
             observation_continuous
         )
 
-        info = self.mdp.check()
+        info = self._mdp.check()
         return (
             discrete_observation_x,
             discrete_observation_y,

@@ -21,7 +21,6 @@ class Trainer:
     # The training is ended as as soon as the agent manages
     # to reach the goal state, associated with the latest
     # step in the sequential curriculum in 96% of the last 100 episodes.
-
     def __init__(
         self,
         curriculum_steps: int = 5,
@@ -54,8 +53,8 @@ class Trainer:
         self._omega = omega
         self._gamma = gamma
         self._scale_modification_value = scale_modification_value
-        self.successive_successful_episodes = successive_successful_episodes
-        self.success_rate = success_rate
+        self._successive_successful_episodes = successive_successful_episodes
+        self._success_rate = success_rate
         self._max_num_episodes = max_num_episodes
         self.save_path: Path = save_path
 
@@ -67,20 +66,24 @@ class Trainer:
         self._successes = deque([], maxlen=successive_successful_episodes)
         self._z_init = z_init
         self._alpha = self._alpha_min
-        self._t_max = 20
+        self._t_max = t_max
 
     def alpha(self, current_state_action: StateAction):
         counter = self.double_q_learning_agent.state_action_counter[
             current_state_action
         ]
-        self._alpha = float(
-            np.max(
-                [
-                    np.float_power(1 / (counter), self._omega),
-                    self._alpha_min,
-                ]
+        # avoid division by 0
+        if counter == 0:
+            self._alpha = self._alpha_min
+        else:
+            self._alpha = float(
+                np.max(
+                    [
+                        np.float_power(1 / (counter), self._omega),
+                        self._alpha_min,
+                    ]
+                )
             )
-        )
         if math.isnan(self._alpha):
             raise ValueError(
                 f"Leaning rate cannot be NaN, {counter}, {self._omega}, {self._alpha_min}"
@@ -185,17 +188,14 @@ class Trainer:
                     int("Goal state reached" in info["Termination condition"])
                 )
                 info["Success rate"] = (
-                    sum(self._successes) / self.successive_successful_episodes
+                    sum(self._successes) / self._successive_successful_episodes
                 )
                 self.save()
                 self.log(info)
                 # Curiculum promotion
-                if info["Success rate"] > self.success_rate:
+                if info["Success rate"] > self._success_rate:
                     break
 
-            self.double_q_learning_agent.insert_curriculum_step(
-                self._working_curriculum_step
-            )
             self.double_q_learning_agent.transfer_learning(
                 self._working_curriculum_step,
                 self.transfer_learning_ratio(
