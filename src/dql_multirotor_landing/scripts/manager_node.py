@@ -5,7 +5,6 @@ import numpy as np
 import rospy
 import tf2_ros
 
-# from dql_multirotor_landing.moving_platform import MovingPlatformNode
 from gazebo_msgs.msg import ContactsState, ModelState, ModelStates
 from gazebo_msgs.srv import SetModelState
 from geometry_msgs.msg import PoseStamped, TwistStamped, Vector3, Vector3Stamped
@@ -14,7 +13,6 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, Float64, Float64MultiArray, Header
 from tf.transformations import euler_from_quaternion
 
-# from dql_multirotor_landing.rotors_interface_cpp import RotorsInterface_CPP # type: ignore
 from dql_multirotor_landing.filters import KalmanFilter3D
 from dql_multirotor_landing.moving_platform import MovingPlatform
 from dql_multirotor_landing.msg import Action, Observation

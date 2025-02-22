@@ -11,15 +11,6 @@ from dql_multirotor_landing.msg import Action, Observation
 class ContinuousObservation:
     def __init__(
         self,
-        # rel_p_x: float = 0.0,
-        # rel_p_y: float = 0.0,
-        # rel_p_z: float = 0.0,
-        # rel_v_x: float = 0.0,
-        # rel_v_y: float = 0.0,
-        # rel_v_z: float = 0.0,
-        # rel_a_x: float = 0.0,
-        # rel_a_y: float = 0.0,
-        # rel_a_z: float = 0.0,
         observation: Observation = Observation(),
         pitch: float = 0.0,
         roll: float = 0.0,
@@ -401,8 +392,8 @@ class TrainingMdp(AbstractMdp):
                 if self._curriculum_check >= self.f_ag:
                     # If you are consistent for a whole second, then a terminal success is reached
                     self.check_result = CheckResult.TERMINAL_SUCCESS
-                # else:
-                #     self.check_result = CheckResult.NON_TERMINAL_SUCCESS
+                else:
+                    self.check_result = CheckResult.NON_TERMINAL_SUCCESS
             else:
                 # We lose all the progress made for
                 # terminal success
