@@ -78,7 +78,6 @@ class ObservationUtils:
         transform_msg.transform.rotation = Quaternion(x=q[0], y=q[1], z=q[2], w=q[3])
 
         return transform_msg
-        # self.br.sendTransform(transform_msg)
 
     def get_relative_state(self, drone_tf, mp_tf):
         """

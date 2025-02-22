@@ -149,39 +149,23 @@ class ManagerNode:
         self.gazebo_pose_pub = rospy.Publisher(
             "/gazebo/set_model_state", ModelState, queue_size=3
         )
-
-        self.relative_vel_pub = rospy.Publisher(
-            "landing_simulation/relative_moving_platform_drone/state/twist",
-            TwistStamped,
-            queue_size=0,
-        )
-        self.relative_pos_pub = rospy.Publisher(
-            "landing_simulation/relative_moving_platform_drone/state/pose",
-            PoseStamped,
-            queue_size=0,
-        )
-        self.relative_rpy_pub = rospy.Publisher(
-            "landing_simulation/relative_moving_platform_drone/debug_target_frame/roll_pitch_yaw",
-            Float64MultiArray,
-            queue_size=0,
-        )
         self.observation_pub = rospy.Publisher(
-            "training_observation_interface/observations",
+            "observations",
             Observation,
             queue_size=0,
         )
 
         self._pub_vz_setpoint = rospy.Publisher(
-            "training_action_interface/setpoint/v_z", Float64, queue_size=3
+            "setpoint/v_z", Float64, queue_size=3
         )
         self._pub_vz_state = rospy.Publisher(
-            "training_action_interface/state/v_z", Float64, queue_size=3
+            "state/v_z", Float64, queue_size=3
         )
         self._pub_yaw_setpoint = rospy.Publisher(
-            "training_action_interface/setpoint/yaw", Float64, queue_size=3
+            "setpoint/yaw", Float64, queue_size=3
         )
         self._pub_yaw_state = rospy.Publisher(
-            "training_action_interface/state/yaw", Float64, queue_size=3
+            "state/yaw", Float64, queue_size=3
         )
         self._pub_rpy_thrust = rospy.Publisher(
             "command/roll_pitch_yawrate_thrust", RollPitchYawrateThrust, queue_size=3
@@ -192,33 +176,24 @@ class ManagerNode:
         rospy.Subscriber(
             "/gazebo/model_states", ModelStates, self._environment_callback
         )
-        rospy.Subscriber("training/reset_simulation", Bool, self._reset_callback)
+        rospy.Subscriber("reset_simulation", Bool, self._reset_callback)
         rospy.Subscriber(
-            "training_action_interface/action_to_interface",
+            "action_to_interface",
             Action,
             self._action_callback,
         )
 
         rospy.Subscriber(
-            "training_action_interface/control_effort/v_z",
+            "control_effort/v_z",
             Float64,
             self._vz_effort_callback,
         )
         rospy.Subscriber(
-            "training_action_interface/control_effort/yaw",
+            "control_effort/yaw",
             Float64,
             self._yaw_effort_callback,
         )
-        rospy.Subscriber(
-            "landing_simulation/relative_moving_platform_drone/state/pose",
-            PoseStamped,
-            self._pose_callback,
-        )
-        rospy.Subscriber(
-            "landing_simulation/relative_moving_platform_drone/state/twist",
-            TwistStamped,
-            self._twist_callback,
-        )
+
         rospy.Subscriber(
             "/moving_platform/contact", ContactsState, self._read_contact_state_callback
         )
@@ -240,8 +215,8 @@ class ManagerNode:
 
         # Compute and publish the relative position and velocity between drone and platform
         rel_pos, rel_vel = self.utils.get_relative_state(drone_tf, mp_tf)
-        self.relative_pos_pub.publish(rel_pos)
-        self.relative_vel_pub.publish(rel_vel)
+        self._publish_rel_pos(rel_pos)
+        self._publish_rel_vel(rel_vel)
 
         # Compute and publish the relative roll, pitch, and yaw angles
         rpy_angles = np.degrees(
@@ -254,8 +229,6 @@ class ManagerNode:
                 ]
             )
         )
-        rpy_msg = Float64MultiArray(data=rpy_angles)
-        self.relative_rpy_pub.publish(rpy_msg)
 
         # Compute and publish observation data
         obs_msg = self.utils.get_observation(rel_pos, rel_vel, self.mp_contact_occured)
@@ -330,7 +303,7 @@ class ManagerNode:
     def _yaw_effort_callback(self, msg: Float64):
         self.effort.yaw_effort = msg.data
 
-    def _pose_callback(self, msg: PoseStamped):
+    def _publish_rel_pos(self, rel_pos: PoseStamped):
         """
         Callback for pose messages.
 
@@ -341,13 +314,13 @@ class ManagerNode:
             msg (PoseStamped): Contains the UAV's pose data (position and orientation).
         """
 
-        orient = msg.pose.orientation
+        orient = rel_pos.pose.orientation
         _, _, yaw = euler_from_quaternion([orient.x, orient.y, orient.z, orient.w])
         self.effort.yaw_state = yaw
         self._pub_yaw_state.publish(Float64(data=yaw))
 
-    def _twist_callback(self, msg: TwistStamped):
-        self.effort.vz_state = -msg.twist.linear.z
+    def _publish_rel_vel(self, rel_vel: TwistStamped):
+        self.effort.vz_state = -rel_vel.twist.linear.z
         self._pub_vz_state.publish(Float64(data=self.effort.vz_state))
 
     def _reset_callback(self, msg):

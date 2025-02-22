@@ -41,14 +41,14 @@ class AbstractLandingEnv(gym.Env, ABC):
     ):
         # Setup publishers
         self.action_to_interface_publisher = get_publisher(
-            "training_action_interface/action_to_interface", Action, queue_size=0
+            "action_to_interface", Action, queue_size=0
         )
         self.reset_simulation_publisher = get_publisher(
-            "training/reset_simulation", Bool, queue_size=0
+            "reset_simulation", Bool, queue_size=0
         )
         # Setup subscribers
         self.observation_continuous_subscriber = rospy.Subscriber(
-            "/hummingbird/training_observation_interface/observations",
+            "/hummingbird/observations",
             Observation,
             self.read_training_continuous_observations,
         )

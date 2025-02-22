@@ -41,9 +41,9 @@
 		<param name="windup_limit" value="10" />
 		<param name="max_loop_frequency" value="1000.0" />
 		<param name="min_loop_frequency" value="1.0" />
-		<param name="topic_from_controller" value="/$(arg drone_name)/training_action_interface/control_effort/v_z/" />
-		<param name="topic_from_plant" value="/$(arg drone_name)/training_action_interface/state/v_z" />
-		<param name="setpoint_topic" value="/$(arg drone_name)/training_action_interface/setpoint/v_z" />
+		<param name="topic_from_controller" value="/$(arg drone_name)/control_effort/v_z/" />
+		<param name="topic_from_plant" value="/$(arg drone_name)/state/v_z" />
+		<param name="setpoint_topic" value="/$(arg drone_name)/setpoint/v_z" />
 	</node>
 	<node name="controller_yaw" pkg="pid" type="controller" ns="pid_yaw" output="screen">
 		<param name="node_name" value="pid_yaw" />
@@ -55,8 +55,8 @@
 		<param name="windup_limit" value="5" />
 		<param name="max_loop_frequency" value="1000.0" />
 		<param name="min_loop_frequency" value="1.0" />
-		<param name="topic_from_controller" value="/$(arg drone_name)/training_action_interface/control_effort/yaw" />
-		<param name="topic_from_plant" value="/$(arg drone_name)/training_action_interface/state/yaw" />
-		<param name="setpoint_topic" value="/$(arg drone_name)/training_action_interface/setpoint/yaw" />
+		<param name="topic_from_controller" value="/$(arg drone_name)/control_effort/yaw" />
+		<param name="topic_from_plant" value="/$(arg drone_name)/state/yaw" />
+		<param name="setpoint_topic" value="/$(arg drone_name)/setpoint/yaw" />
 	</node>
 </launch>
