@@ -154,7 +154,12 @@ class Trainer:
     @staticmethod
     def load() -> "Trainer":
         """Loads a trainer object from a pickle file."""
-        save_path = ASSETS_PATH
+        save_path: Path = ASSETS_PATH / "22-02-2025 21:37:06"
+        # save_path = save_path / max(
+        #     datetime.strptime(str(timestep), r"%d-%m-%Y %H:%M:%S")
+        #     for timestep in save_path.glob("[0-9]-[0-9]-[0-9]*")
+        # ).strftime(r"%d-%m-%Y %H:%M:%S")
+
         with open(save_path / "tainer.pickle", "rb") as f:
             trainer = pickle.load(f)
         agent = DoubleQLearningAgent.load(save_path)
@@ -225,6 +230,9 @@ class Trainer:
                 # step in the sequential curriculum in 96% of the last 100 episodes.
                 # This causes a curriculum promotion
                 if info["Success rate"] > self._success_rate:
+                    self._successes = deque(
+                        [], maxlen=self._successive_successful_episodes
+                    )
                     break
             # Do transfer learning, i.e scale the Q table accordingly
             self._double_q_learning_agent.transfer_learning(
