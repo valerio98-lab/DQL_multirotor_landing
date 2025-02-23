@@ -290,7 +290,7 @@ class SimulationLandingEnv(AbstractLandingEnv):
         t_max: int = 20,
         f_ag: float = 22.92,
         p_max: float = 4.5,
-        z_init: float = 4.0,
+        z_init: float = 4,
     ):
         super().__init__(
             t_max=t_max,

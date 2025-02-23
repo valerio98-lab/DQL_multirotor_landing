@@ -26,10 +26,10 @@ class ContinuousObservation:
         self.rel_a_x = observation.rel_a_x
         self.rel_a_y = observation.rel_a_y
         self.rel_a_z = observation.rel_a_z
+        self.contact = observation.contact
         self.pitch = pitch
         self.roll = roll
         self.abs_p_z = abs_p_z
-        self.contact = contact
 
 
 @dataclass
@@ -577,7 +577,7 @@ class SimulationMdp(AbstractMdp):
 
     _current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
     _previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
-    _current_continuous_action = Action(pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1)
+    _current_continuous_action = Action(pitch=0, roll=0, yaw=0, v_z=-0.4)
 
     def __init__(
         self,
@@ -599,7 +599,7 @@ class SimulationMdp(AbstractMdp):
         delta_theta: float = np.deg2rad(7.12574),
         beta: float = 1 / 3,
         sigma_a: float = 0.416,
-        minimum_altitude: float = 0.0,
+        minimum_altitude: float = 0.29,
     ) -> None:
         super().__init__(
             working_curriculum_step,
@@ -815,11 +815,12 @@ class SimulationMdp(AbstractMdp):
             )
             self._info["Fly zone y"] = f"{self._flyzone_y=}"
         elif self._current_continuous_observation.abs_p_z < self._minimum_altitude:
-            self._check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
-            self._info["Relative z"] = (
-                f"{self._current_continuous_observation.abs_p_z=}"
-            )
-            self._info["Fly zone z"] = f"{self._flyzone_z=}"
+            # self._check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+            # self._info["Relative z"] = (
+            #     f"{self._current_continuous_observation.abs_p_z=}"
+            # )
+            # self._info["Fly zone z"] = f"{self._flyzone_z=}"
+            self._check_result = CheckResult.TERMINAL_CONTACT
 
         elif self._current_continuous_observation.abs_p_z > self._flyzone_z[1]:
             self._check_result = CheckResult.TERMINAL_FLYZONE_Z
@@ -882,6 +883,4 @@ class SimulationMdp(AbstractMdp):
         self._previous_discrete_state_x: Optional[Tuple[int, int, int, int, int]] = None
         self._current_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
         self._previous_discrete_state_y: Optional[Tuple[int, int, int, int, int]] = None
-        self._current_continuous_action = Action(
-            pitch=0, roll=0, yaw=np.pi / 4, v_z=-0.1
-        )
+        self._current_continuous_action = Action(pitch=0.0, roll=0.0, yaw=0, v_z=-0.4)

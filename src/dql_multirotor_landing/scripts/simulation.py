@@ -42,7 +42,7 @@ if __name__ == "__main__":
         else:
             print("=" * 80)
 
-    for current_episode in range(10):
+    for current_episode in range(3):
         current_state_x, current_state_y = env.reset()
 
         done = False
@@ -50,7 +50,7 @@ if __name__ == "__main__":
             action_x = agent_x.predict(current_state_x)
             action_y = agent_y.predict(current_state_y)
 
-            next_state_x, next_state_y, done, info = env.step(action_x, action_y)
+            next_state_x, next_state_y, done, info = env.step(action_x, 2)
 
             if done:
                 info["current_episode"] = current_episode + 1

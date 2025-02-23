@@ -4,7 +4,6 @@ from dataclasses import dataclass
 import numpy as np
 import rospy
 import tf2_ros
-
 from gazebo_msgs.msg import ContactsState, ModelState, ModelStates
 from gazebo_msgs.srv import SetModelState
 from geometry_msgs.msg import PoseStamped, TwistStamped, Vector3, Vector3Stamped
@@ -153,18 +152,10 @@ class ManagerNode:
             queue_size=0,
         )
 
-        self._pub_vz_setpoint = rospy.Publisher(
-            "setpoint/v_z", Float64, queue_size=3
-        )
-        self._pub_vz_state = rospy.Publisher(
-            "state/v_z", Float64, queue_size=3
-        )
-        self._pub_yaw_setpoint = rospy.Publisher(
-            "setpoint/yaw", Float64, queue_size=3
-        )
-        self._pub_yaw_state = rospy.Publisher(
-            "state/yaw", Float64, queue_size=3
-        )
+        self._pub_vz_setpoint = rospy.Publisher("setpoint/v_z", Float64, queue_size=3)
+        self._pub_vz_state = rospy.Publisher("state/v_z", Float64, queue_size=3)
+        self._pub_yaw_setpoint = rospy.Publisher("setpoint/yaw", Float64, queue_size=3)
+        self._pub_yaw_state = rospy.Publisher("state/yaw", Float64, queue_size=3)
         self._pub_rpy_thrust = rospy.Publisher(
             "command/roll_pitch_yawrate_thrust", RollPitchYawrateThrust, queue_size=3
         )
@@ -199,7 +190,7 @@ class ManagerNode:
     def publish_obs(self, drone_tf, mp_tf):
         """
         Main function for updating and publishing the state of the drone and moving platform.
-        - Computes and publish a new trajectory setpoint for the moving platform 
+        - Computes and publish a new trajectory setpoint for the moving platform
         - Computes and publishes the relative position and velocity between drone and platform
         - Computes and publishes the relative roll, pitch, and yaw angles for PID control
         - Computes and publishes observation data from RL env
@@ -349,6 +340,8 @@ class ManagerNode:
         """
         for setpoint in self.pid_setpoints.__annotations__:
             setattr(self.pid_setpoints, setpoint, getattr(msg, setpoint))
+        with open("/home/haislich/DQL_multirotor_landing/actions.txt", "a") as f:
+            f.write(f"{self.pid_setpoints.__dict__}\n")
         self._publish_setpoints()
 
     def _read_contact_state_callback(self, msg: ContactsState):
