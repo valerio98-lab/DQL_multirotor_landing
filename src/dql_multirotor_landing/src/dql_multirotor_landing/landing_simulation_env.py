@@ -333,7 +333,7 @@ class SimulationLandingEnv(AbstractLandingEnv):
             self._flyzone_x[0],
             self._flyzone_x[1],
         )
-        initial_drone.pose.position.y = np.clip(
+        initial_drone.pose.position.y = 0 * np.clip(
             moving_platform.pose.position.y - y_init,
             self._flyzone_y[0],
             self._flyzone_y[1],

@@ -599,7 +599,7 @@ class SimulationMdp(AbstractMdp):
         delta_theta: float = np.deg2rad(7.12574),
         beta: float = 1 / 3,
         sigma_a: float = 0.416,
-        minimum_altitude: float = 0.29,
+        minimum_altitude: float = 0.2,
     ) -> None:
         super().__init__(
             working_curriculum_step,
@@ -815,12 +815,11 @@ class SimulationMdp(AbstractMdp):
             )
             self._info["Fly zone y"] = f"{self._flyzone_y=}"
         elif self._current_continuous_observation.abs_p_z < self._minimum_altitude:
-            # self._check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
-            # self._info["Relative z"] = (
-            #     f"{self._current_continuous_observation.abs_p_z=}"
-            # )
-            # self._info["Fly zone z"] = f"{self._flyzone_z=}"
-            self._check_result = CheckResult.TERMINAL_CONTACT
+            self._check_result = CheckResult.TERMINAL_MINIMUM_ALTITUDE
+            self._info["Relative z"] = (
+                f"{self._current_continuous_observation.abs_p_z=}"
+            )
+            self._info["Fly zone z"] = f"{self._flyzone_z=}"
 
         elif self._current_continuous_observation.abs_p_z > self._flyzone_z[1]:
             self._check_result = CheckResult.TERMINAL_FLYZONE_Z
@@ -860,14 +859,15 @@ class SimulationMdp(AbstractMdp):
                     -self._theta_max,
                 )
             )
-        if action_y == 0:  # Increase
+
+        if False and action_y == 0:  # Increase
             self._current_continuous_action.roll = min(
                 (
                     self._current_continuous_action.roll + self._delta_theta,
                     self._theta_max,
                 )
             )
-        elif action_y == 1:  # Decrease
+        elif False and action_y == 1:  # Decrease
             self._current_continuous_action.roll = max(
                 (
                     self._current_continuous_action.roll - self._delta_theta,
