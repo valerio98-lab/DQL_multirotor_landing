@@ -34,10 +34,6 @@ catkin_make
 ```
 
 ```bash
-catkin_make
-```
-
-```bash
 source devel/setup.bash
 ```
 
