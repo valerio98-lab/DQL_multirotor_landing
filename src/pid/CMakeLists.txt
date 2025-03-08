@@ -20,15 +20,12 @@ include_directories(include
 )
 
 add_executable(controller src/controller.cpp src/pid.cpp)
-add_executable(setpoint_node src/setpoint_node.cpp)
 
 add_dependencies(controller ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(setpoint_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(controller ${catkin_LIBRARIES})
-target_link_libraries(setpoint_node ${catkin_LIBRARIES})
 
-install(TARGETS controller setpoint_node
+install(TARGETS controller
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
@@ -38,6 +35,3 @@ install(DIRECTORY include/${PROJECT_NAME}/
   PATTERN ".svn" EXCLUDE
 )
 
-install(DIRECTORY launch/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
-)
