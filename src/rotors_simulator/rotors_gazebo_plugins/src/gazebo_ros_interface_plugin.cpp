@@ -194,7 +194,7 @@ namespace gazebo
 
     gzdbg << "Connecting Gazebo topic \"" << gazeboTopicName
           << "\" to ROS topic \"" << rosTopicName << "\"." << std::endl;
-
+    gzdbg << "Gazebo message type " << gz_connect_gazebo_to_ros_topic_msg->msgtype() << std::endl;
     switch (gz_connect_gazebo_to_ros_topic_msg->msgtype())
     {
     case gz_std_msgs::ConnectGazeboToRosTopic::ACTUATORS:
@@ -213,11 +213,7 @@ namespace gazebo
           &GazeboRosInterfacePlugin::GzJointStateMsgCallback, this,
           gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
       break;
-    case gz_std_msgs::ConnectGazeboToRosTopic::MAGNETIC_FIELD:
-      ConnectHelper<gz_sensor_msgs::MagneticField, sensor_msgs::MagneticField>(
-          &GazeboRosInterfacePlugin::GzMagneticFieldMsgCallback, this,
-          gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
-      break;
+
     case gz_std_msgs::ConnectGazeboToRosTopic::NAV_SAT_FIX:
       ConnectHelper<gz_sensor_msgs::NavSatFix, sensor_msgs::NavSatFix>(
           &GazeboRosInterfacePlugin::GzNavSatFixCallback, this, gazeboNamespace,
@@ -258,12 +254,7 @@ namespace gazebo
           &GazeboRosInterfacePlugin::GzVector3dStampedMsgCallback, this,
           gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
       break;
-    case gz_std_msgs::ConnectGazeboToRosTopic::WIND_SPEED:
-      ConnectHelper<gz_mav_msgs::WindSpeed,
-                    rotors_comm::WindSpeed>(
-          &GazeboRosInterfacePlugin::GzWindSpeedMsgCallback, this,
-          gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
-      break;
+
     case gz_std_msgs::ConnectGazeboToRosTopic::WRENCH_STAMPED:
       ConnectHelper<gz_geometry_msgs::WrenchStamped,
                     geometry_msgs::WrenchStamped>(
@@ -351,25 +342,7 @@ namespace gazebo
 
       break;
     }
-    case gz_std_msgs::ConnectRosToGazeboTopic::WIND_SPEED:
-    {
-      gazebo::transport::PublisherPtr gz_publisher_ptr =
-          gz_node_handle_->Advertise<gz_mav_msgs::WindSpeed>(
-              gz_connect_ros_to_gazebo_topic_msg->gazebo_topic(), 1);
 
-      // Create ROS subscriber.
-      ros::Subscriber ros_subscriber =
-          ros_node_handle_->subscribe<rotors_comm::WindSpeed>(
-              gz_connect_ros_to_gazebo_topic_msg->ros_topic(), 1,
-              boost::bind(&GazeboRosInterfacePlugin::RosWindSpeedMsgCallback,
-                          this, _1, gz_publisher_ptr));
-
-      // Save reference to the ROS subscriber so callback will continue to be
-      // called.
-      ros_subscribers.push_back(ros_subscriber);
-
-      break;
-    }
     default:
     {
       gzthrow("ConnectRosToGazeboTopic message type with enum val = "
@@ -455,42 +428,6 @@ namespace gazebo
 
     // Publish to ROS.
     ros_publisher.publish(ros_joint_state_msg_);
-  }
-
-  void GazeboRosInterfacePlugin::GzMagneticFieldMsgCallback(
-      GzMagneticFieldMsgPtr &gz_magnetic_field_msg,
-      ros::Publisher ros_publisher)
-  {
-    // We need to convert from a Gazebo message to a ROS message,
-    // and then forward the MagneticField message onto ROS
-
-    ConvertHeaderGzToRos(gz_magnetic_field_msg->header(),
-                         &ros_magnetic_field_msg_.header);
-
-    ros_magnetic_field_msg_.magnetic_field.x =
-        gz_magnetic_field_msg->magnetic_field().x();
-    ros_magnetic_field_msg_.magnetic_field.y =
-        gz_magnetic_field_msg->magnetic_field().y();
-    ros_magnetic_field_msg_.magnetic_field.z =
-        gz_magnetic_field_msg->magnetic_field().z();
-
-    // Position covariance should have 9 elements, and both the Gazebo and ROS
-    // arrays should be the same size!
-    GZ_ASSERT(gz_magnetic_field_msg->magnetic_field_covariance_size() == 9,
-              "The Gazebo MagneticField message does not have 9 magnetic field "
-              "covariance elements.");
-    GZ_ASSERT(ros_magnetic_field_msg_.magnetic_field_covariance.size() == 9,
-              "The ROS MagneticField message does not have 9 magnetic field "
-              "covariance elements.");
-    for (int i = 0; i < gz_magnetic_field_msg->magnetic_field_covariance_size();
-         i++)
-    {
-      ros_magnetic_field_msg_.magnetic_field_covariance[i] =
-          gz_magnetic_field_msg->magnetic_field_covariance(i);
-    }
-
-    // Publish to ROS.
-    ros_publisher.publish(ros_magnetic_field_msg_);
   }
 
   void GazeboRosInterfacePlugin::GzNavSatFixCallback(
@@ -835,28 +772,6 @@ namespace gazebo
     ros_publisher.publish(ros_position_stamped_msg_);
   }
 
-  void GazeboRosInterfacePlugin::GzWindSpeedMsgCallback(
-      GzWindSpeedMsgPtr &gz_wind_speed_msg,
-      ros::Publisher ros_publisher)
-  {
-    // ============================================ //
-    // =================== HEADER ================= //
-    // ============================================ //
-    ConvertHeaderGzToRos(gz_wind_speed_msg->header(),
-                         &ros_wind_speed_msg_.header);
-
-    // ============================================ //
-    // ================== VELOCITY ================ //
-    // ============================================ //
-    ros_wind_speed_msg_.velocity.x =
-        gz_wind_speed_msg->velocity().x();
-    ros_wind_speed_msg_.velocity.y =
-        gz_wind_speed_msg->velocity().y();
-    ros_wind_speed_msg_.velocity.z =
-        gz_wind_speed_msg->velocity().z();
-    ros_publisher.publish(ros_wind_speed_msg_);
-  }
-
   void GazeboRosInterfacePlugin::GzWrenchStampedMsgCallback(
       GzWrenchStampedMsgPtr &gz_wrench_stamped_msg,
       ros::Publisher ros_publisher)
@@ -973,28 +888,6 @@ namespace gazebo
 
     // Publish to Gazebo
     gz_publisher_ptr->Publish(gz_roll_pitch_yawrate_thrust_msg);
-  }
-
-  void GazeboRosInterfacePlugin::RosWindSpeedMsgCallback(
-      const rotors_comm::WindSpeedConstPtr &ros_wind_speed_msg_ptr,
-      gazebo::transport::PublisherPtr gz_publisher_ptr)
-  {
-    // Convert ROS message to Gazebo message
-
-    gz_mav_msgs::WindSpeed gz_wind_speed_msg;
-
-    ConvertHeaderRosToGz(ros_wind_speed_msg_ptr->header,
-                         gz_wind_speed_msg.mutable_header());
-
-    gz_wind_speed_msg.mutable_velocity()->set_x(
-        ros_wind_speed_msg_ptr->velocity.x);
-    gz_wind_speed_msg.mutable_velocity()->set_y(
-        ros_wind_speed_msg_ptr->velocity.y);
-    gz_wind_speed_msg.mutable_velocity()->set_z(
-        ros_wind_speed_msg_ptr->velocity.z);
-
-    // Publish to Gazebo
-    gz_publisher_ptr->Publish(gz_wind_speed_msg);
   }
 
   void GazeboRosInterfacePlugin::GzBroadcastTransformMsgCallback(

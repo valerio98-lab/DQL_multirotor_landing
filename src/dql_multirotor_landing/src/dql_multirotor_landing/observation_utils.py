@@ -10,7 +10,6 @@ from geometry_msgs.msg import (
     Vector3,
     Vector3Stamped,
 )
-from sensor_msgs.msg import Imu
 from std_msgs.msg import Header
 from tf.transformations import (
     quaternion_from_euler,
@@ -27,7 +26,6 @@ class ObservationData:
     def __init__(self):
         self.relative_position = PoseStamped()
         self.relative_velocity = TwistStamped()
-        self.relative_acceleration = Imu()
         self.request_simulation_reset = False
 
 

@@ -41,7 +41,6 @@
 #include "CommandMotorSpeed.pb.h"
 #include "Float32.pb.h"
 #include "JointState.pb.h"
-#include "MagneticField.pb.h"
 #include "NavSatFix.pb.h"
 #include "Odometry.pb.h"
 #include "PoseWithCovarianceStamped.pb.h"
@@ -50,7 +49,6 @@
 #include "TransformStampedWithFrameIds.pb.h"
 #include "TwistStamped.pb.h"
 #include "Vector3dStamped.pb.h"
-#include "WindSpeed.pb.h"
 #include "WrenchStamped.pb.h"
 
 //=============== ROS MSG TYPES ===============//
@@ -64,10 +62,7 @@
 #include <mav_msgs/Actuators.h>
 #include <mav_msgs/RollPitchYawrateThrust.h>
 #include <nav_msgs/Odometry.h>
-#include <rotors_comm/WindSpeed.h>
-#include <sensor_msgs/Imu.h>
 #include <sensor_msgs/JointState.h>
-#include <sensor_msgs/MagneticField.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <std_msgs/Float32.h>
 
@@ -101,14 +96,12 @@ namespace gazebo
         GzWrenchStampedMsgPtr;
     typedef const boost::shared_ptr<const gz_mav_msgs::RollPitchYawrateThrust>
         GzRollPitchYawrateThrustPtr;
-    typedef const boost::shared_ptr<const gz_mav_msgs::WindSpeed> GzWindSpeedMsgPtr;
     typedef const boost::shared_ptr<const gz_sensor_msgs::Actuators>
         GzActuatorsMsgPtr;
 
     typedef const boost::shared_ptr<const gz_sensor_msgs::JointState>
         GzJointStateMsgPtr;
-    typedef const boost::shared_ptr<const gz_sensor_msgs::MagneticField>
-        GzMagneticFieldMsgPtr;
+
     typedef const boost::shared_ptr<const gz_sensor_msgs::NavSatFix> GzNavSatFixPtr;
 
     /// \brief    ROS interface plugin for Gazebo.
@@ -223,11 +216,6 @@ namespace gazebo
                                      ros::Publisher ros_publisher);
         sensor_msgs::JointState ros_joint_state_msg_;
 
-        // MAGNETIC FIELD
-        void GzMagneticFieldMsgCallback(GzMagneticFieldMsgPtr &gz_magnetic_field_msg,
-                                        ros::Publisher ros_publisher);
-        sensor_msgs::MagneticField ros_magnetic_field_msg_;
-
         // NAT SAT FIX (GPS)
         void GzNavSatFixCallback(GzNavSatFixPtr &gz_nav_sat_fix_msg,
                                  ros::Publisher ros_publisher);
@@ -267,11 +255,6 @@ namespace gazebo
                                        ros::Publisher ros_publisher);
         geometry_msgs::TwistStamped ros_twist_stamped_msg_;
 
-        // WIND SPEED
-        void GzWindSpeedMsgCallback(GzWindSpeedMsgPtr &gz_wind_speed_msg,
-                                    ros::Publisher ros_publisher);
-        rotors_comm::WindSpeed ros_wind_speed_msg_;
-
         // WRENCH STAMPED
         void GzWrenchStampedMsgCallback(GzWrenchStampedMsgPtr &gz_wrench_stamped_msg,
                                         ros::Publisher ros_publisher);
@@ -295,11 +278,6 @@ namespace gazebo
         void RosRollPitchYawrateThrustMsgCallback(
             const mav_msgs::RollPitchYawrateThrustConstPtr &
                 ros_roll_pitch_yawrate_thrust_msg_ptr,
-            gazebo::transport::PublisherPtr gz_publisher_ptr);
-
-        // WIND SPEED
-        void RosWindSpeedMsgCallback(
-            const rotors_comm::WindSpeedConstPtr &ros_wind_speed_msg_ptr,
             gazebo::transport::PublisherPtr gz_publisher_ptr);
 
         // ============================================ //
