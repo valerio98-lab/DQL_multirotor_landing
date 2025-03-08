@@ -282,16 +282,7 @@ endif()
 message(STATUS "GAZEBO ${gazebo_VERSION_MAJOR}.${gazebo_VERSION_MINOR}.${gazebo_VERSION_PATCH}")
 message(STATUS "${GAZEBO_VERSION_MAJOR}")
 
-if(${gazebo_VERSION_MAJOR} GREATER 4)
-  add_library(gazebo_geotagged_images_plugin SHARED src/external/gazebo_geotagged_images_plugin.cpp)
-  target_link_libraries(gazebo_geotagged_images_plugin ${target_linking_LIBRARIES} )
-  if (NOT NO_ROS)
-    add_dependencies(gazebo_geotagged_images_plugin ${catkin_EXPORTED_TARGETS})
-  endif()
-  list(APPEND targets_to_install gazebo_geotagged_images_plugin)
-else()
-  message(STATUS "Gazebo version is less than 5, not building gazebo_geotagged_images_plugin.cpp.")
-endif()
+
 
 #===================================== FW DYNAMICS PLUGIN =======================================//
 if (NOT NO_ROS)
@@ -317,41 +308,9 @@ if (NOT NO_ROS)
   list(APPEND targets_to_install rotors_gazebo_imu_plugin)
 endif()
 
-#========================================= NoisyDepth PLUGIN ======================================//
-if (NOT NO_ROS)
-  if(${gazebo_dev_FOUND})
-    add_library(rotors_gazebo_noisydepth_plugin SHARED src/gazebo_noisydepth_plugin.cpp
-            src/depth_noise_model.cpp)
 
-    # As the depth camera plugins .so's are not part of any cmake accessible library,
-    # but the plugin path is path is, we iterate over all paths until plugin folder is found.
-    foreach(subdir ${gazebo_dev_LIBRARY_DIRS})
-      if (${subdir} MATCHES "gazebo.*plugins")
-        set(gazebo_dev_DEPTHCAMERA_LIB ${subdir}/libDepthCameraPlugin${CMAKE_SHARED_LIBRARY_SUFFIX})
-      endif()
-    endforeach()
 
-    target_link_libraries(rotors_gazebo_noisydepth_plugin ${target_linking_LIBRARIES} ${gazebo_dev_DEPTHCAMERA_LIB})
-    if (NOT NO_ROS)
-      add_dependencies(rotors_gazebo_noisydepth_plugin ${catkin_EXPORTED_TARGETS})
-    endif()
-    list(APPEND targets_to_install rotors_gazebo_noisydepth_plugin)
-  else()
-    message(STATUS "Gazebo version too old (no gazebo_dev package), not building gazebo_noisydepth_plugin.cpp.")
-  endif()
-endif()
 
-#======================================== LIDAR PLUGIN ==========================================//
-if(${gazebo_VERSION_MAJOR} GREATER 4)
-  add_library(rotors_gazebo_lidar_plugin SHARED src/external/gazebo_lidar_plugin.cpp)
-  target_link_libraries(rotors_gazebo_lidar_plugin ${target_linking_LIBRARIES} )
-  if (NOT NO_ROS)
-    add_dependencies(rotors_gazebo_lidar_plugin ${catkin_EXPORTED_TARGETS})
-  endif()
-  list(APPEND targets_to_install rotors_gazebo_lidar_plugin)
-else()
-  message(STATUS "Gazebo version is less than 5, not building gazebo_lidar_plugin.cpp.")
-endif()
 
 #===================================== MAGNETOMETER PLUGIN ======================================//
 if (NOT NO_ROS)
@@ -394,7 +353,7 @@ if (BUILD_MAVLINK_INTERFACE_PLUGIN)
         set(MAVLINK_HEADERS_FOUND TRUE)
       endif()
     endif()
-    add_library(rotors_gazebo_mavlink_interface SHARED src/gazebo_mavlink_interface.cpp src/geo_mag_declination.cpp)
+    add_library(rotors_gazebo_mavlink_interface SHARED src/gazebo_mavlink_interface.cpp)
     target_link_libraries(rotors_gazebo_mavlink_interface ${target_linking_LIBRARIES}  ${mav_msgs})
     list(APPEND targets_to_install rotors_gazebo_mavlink_interface)
   else()
@@ -494,13 +453,7 @@ if(BUILD_OPTICAL_FLOW_PLUGIN)
   list(APPEND targets_to_install rotors_gazebo_optical_flow_plugin)
 endif()
 
-#======================================= PRESSURE PLUGIN ========================================//
-add_library(rotors_gazebo_pressure_plugin SHARED src/gazebo_pressure_plugin.cpp)
-target_link_libraries(rotors_gazebo_pressure_plugin ${target_linking_LIBRARIES}  ${GLOG_LIBRARIES})
-if (NOT NO_ROS)
-  add_dependencies(rotors_gazebo_pressure_plugin ${catkin_EXPORTED_TARGETS})
-endif()
-list(APPEND targets_to_install rotors_gazebo_pressure_plugin)
+
 
 #===================================== ROS INTERFACE PLUGIN =====================================//
 # This entire plugin is only built if ROS is a dependency
@@ -511,13 +464,6 @@ if (NOT NO_ROS)
   list(APPEND targets_to_install rotors_gazebo_ros_interface_plugin)
 endif()
 
-#========================================= WIND PLUGIN ==========================================//
-if (NOT NO_ROS)
-  add_library(rotors_gazebo_wind_plugin SHARED src/gazebo_wind_plugin.cpp)
-  target_link_libraries(rotors_gazebo_wind_plugin ${target_linking_LIBRARIES} )
-  add_dependencies(rotors_gazebo_wind_plugin ${catkin_EXPORTED_TARGETS})
-  list(APPEND targets_to_install rotors_gazebo_wind_plugin)
-endif()
 
 # =============================================================================================== #
 # ======================================= EXTERNAL LIBRARIES ==================================== #

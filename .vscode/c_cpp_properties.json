@@ -7,7 +7,8 @@
       },
       "includePath": [
         "/opt/ros/noetic/include/**",
-        "/home/haislich/dql_multirotor_landing/src/dql_multirotor_landing/include/**",
+        // "/home/haislich/dql_multirotor_landing/src/dql_multirotor_landing/include/**",
+        // "/home/haislich/dql_multirotor_landing/src/dql_multirotor_landing/include/**",
         "/usr/include/**"
       ],
       "name": "ROS",

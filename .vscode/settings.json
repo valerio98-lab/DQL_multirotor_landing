@@ -1,7 +1,7 @@
 {
     "python.analysis.extraPaths": [
         "/opt/ros/noetic/lib/python3/dist-packages",
-        "./devel/lib/python3/dist-packages",
+        // "./devel/lib/python3/dist-packages",
         "./src/dql_multirotor_landing/src"
     ],
     "spellright.language": [
