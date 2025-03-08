@@ -154,11 +154,11 @@ class Trainer:
     @staticmethod
     def load() -> "Trainer":
         """Loads a trainer object from a pickle file."""
-        save_path: Path = ASSETS_PATH / "22-02-2025 21:37:06"
-        # save_path = save_path / max(
-        #     datetime.strptime(str(timestep), r"%d-%m-%Y %H:%M:%S")
-        #     for timestep in save_path.glob("[0-9]-[0-9]-[0-9]*")
-        # ).strftime(r"%d-%m-%Y %H:%M:%S")
+        save_path: Path = ASSETS_PATH
+        save_path = save_path / max(
+            datetime.strptime(str(timestep), r"%d-%m-%Y %H:%M:%S")
+            for timestep in save_path.glob("[0-9]-[0-9]-[0-9]*")
+        ).strftime(r"%d-%m-%Y %H:%M:%S")
 
         with open(save_path / "tainer.pickle", "rb") as f:
             trainer = pickle.load(f)
