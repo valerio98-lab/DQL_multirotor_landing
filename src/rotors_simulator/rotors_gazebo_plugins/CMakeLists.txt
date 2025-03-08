@@ -259,15 +259,6 @@ include_directories(${Eigen_INCLUDE_DIRS})
 
 # SORTED IN ALPHABETICAL ORDER (by "plugin" name, keep it this way!)
 
-#========================================= BAG PLUGIN ===========================================//
-# Entire GazeboBagPlugin is a heavy ROS dependency, and so rather than passing messages to
-# GazeboRosInterfacePlugin, this entire library is only included if ROS is present.
-if (NOT NO_ROS)
-  add_library(rotors_gazebo_bag_plugin SHARED src/gazebo_bag_plugin.cpp)
-  target_link_libraries(rotors_gazebo_bag_plugin ${target_linking_LIBRARIES} )
-  add_dependencies(rotors_gazebo_bag_plugin ${catkin_EXPORTED_TARGETS})
-  list(APPEND targets_to_install rotors_gazebo_bag_plugin)
-endif()
 
 #================================= CONTROLLER INTERFACE PLUGIN ==================================//
 if (NOT NO_ROS)
@@ -292,33 +283,6 @@ if (NOT NO_ROS)
   list(APPEND targets_to_install rotors_gazebo_fw_dynamics_plugin)
 endif()
 
-#========================================= GPS PLUGIN ===========================================//
-if (NOT NO_ROS)
-  add_library(rotors_gazebo_gps_plugin SHARED src/gazebo_gps_plugin.cpp)
-  target_link_libraries(rotors_gazebo_gps_plugin ${target_linking_LIBRARIES} )
-  add_dependencies(rotors_gazebo_gps_plugin ${catkin_EXPORTED_TARGETS})
-  list(APPEND targets_to_install rotors_gazebo_gps_plugin)
-endif()
-
-#========================================= IMU PLUGIN ===========================================//
-if (NOT NO_ROS)
-  add_library(rotors_gazebo_imu_plugin SHARED src/gazebo_imu_plugin.cpp)
-  target_link_libraries(rotors_gazebo_imu_plugin ${target_linking_LIBRARIES} )
-  add_dependencies(rotors_gazebo_imu_plugin ${catkin_EXPORTED_TARGETS})
-  list(APPEND targets_to_install rotors_gazebo_imu_plugin)
-endif()
-
-
-
-
-
-#===================================== MAGNETOMETER PLUGIN ======================================//
-if (NOT NO_ROS)
-  add_library(rotors_gazebo_magnetometer_plugin SHARED src/gazebo_magnetometer_plugin.cpp)
-  target_link_libraries(rotors_gazebo_magnetometer_plugin ${target_linking_LIBRARIES} )
-  add_dependencies(rotors_gazebo_magnetometer_plugin ${catkin_EXPORTED_TARGETS})
-  list(APPEND targets_to_install rotors_gazebo_magnetometer_plugin)
-endif()
 
 #================================= MAVLINK INTERFACE PLUGIN =====================================//
 
@@ -469,21 +433,6 @@ endif()
 # ======================================= EXTERNAL LIBRARIES ==================================== #
 # =============================================================================================== #
 
-# liftdrag_plugin is provided by Gazebo, but not guaranteed to be on system.
-# Naming has not been changed to match rotors convetion, due to this being an external
-# code soure.
-# Linux is not consistent with plugin availability, even on Gazebo 7
-#if("${GAZEBO_VERSION}" VERSION_LESS "7.0")
-if(${gazebo_VERSION_MAJOR} GREATER 4)
-  add_library(LiftDragPlugin SHARED src/liftdrag_plugin/liftdrag_plugin.cpp)
-  target_link_libraries(LiftDragPlugin ${target_linking_LIBRARIES} )
-  if (NOT NO_ROS)
-    add_dependencies(LiftDragPlugin ${catkin_EXPORTED_TARGETS})
-  endif()
-  list(APPEND targets_to_install LiftDragPlugin)
-else()
-  message(STATUS "Gazebo version is less than 5, not building liftdrag_plugin.cpp.")
-endif()
 
 message(STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}")
 if (NOT NO_ROS)
