@@ -275,13 +275,6 @@ message(STATUS "${GAZEBO_VERSION_MAJOR}")
 
 
 
-#===================================== FW DYNAMICS PLUGIN =======================================//
-if (NOT NO_ROS)
-  add_library(rotors_gazebo_fw_dynamics_plugin SHARED src/gazebo_fw_dynamics_plugin.cpp)
-  target_link_libraries(rotors_gazebo_fw_dynamics_plugin ${target_linking_LIBRARIES}  ${YamlCpp_LIBRARIES})
-  add_dependencies(rotors_gazebo_fw_dynamics_plugin ${catkin_EXPORTED_TARGETS})
-  list(APPEND targets_to_install rotors_gazebo_fw_dynamics_plugin)
-endif()
 
 
 #================================= MAVLINK INTERFACE PLUGIN =====================================//
