@@ -340,8 +340,6 @@ class ManagerNode:
         """
         for setpoint in self.pid_setpoints.__annotations__:
             setattr(self.pid_setpoints, setpoint, getattr(msg, setpoint))
-        with open("/home/haislich/DQL_multirotor_landing/actions.txt", "a") as f:
-            f.write(f"{self.pid_setpoints.__dict__}\n")
         self._publish_setpoints()
 
     def _read_contact_state_callback(self, msg: ContactsState):

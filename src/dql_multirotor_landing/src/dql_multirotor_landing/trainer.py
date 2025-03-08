@@ -143,7 +143,7 @@ class Trainer:
         """Saves the trainer object to a file using pickle."""
         if not self._save_path.exists():
             self._save_path.mkdir(parents=True, exist_ok=True)
-        with open(self._save_path / "tainer.pickle", "wb") as f:
+        with open(self._save_path / "trainer.pickle", "wb") as f:
             pickle.dump(self, f)
         self._double_q_learning_agent.save(self._save_path)
         # Make available for training purposes
@@ -244,7 +244,7 @@ class Trainer:
             env.close()
             self.save()
 
-    def log(self, info: Dict[str, Any], clean=True):
+    def log(self, info: Dict[str, Any], clean=False):
         # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
         # Clear screen and return to the left corner
 

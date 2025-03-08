@@ -49,7 +49,6 @@ private:
   void pidEnableCallback(const std_msgs::Bool& pid_enable_msg);
   void plantStateCallback(const std_msgs::Float64& state_msg);
   void printParameters();
-  void reconfigureCallback(pid::PidConfig& config, uint32_t level);
   void setpointCallback(const std_msgs::Float64& setpoint_msg);
   bool validateParameters();
 
@@ -62,7 +61,6 @@ private:
 
   ros::Time prev_time_;
   ros::Duration delta_t_;
-  bool first_reconfig_ = true;
 
   double error_integral_ = 0;
   double proportional_ = 0;  // proportional term of output

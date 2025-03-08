@@ -58,12 +58,6 @@ PidObject::PidObject() : error_(3, 0), filtered_error_(3, 0), error_deriv_(3, 0)
     exit(EXIT_FAILURE);
   }
 
-  // dynamic reconfiguration
-  dynamic_reconfigure::Server<pid::PidConfig> config_server;
-  dynamic_reconfigure::Server<pid::PidConfig>::CallbackType f;
-  f = boost::bind(&PidObject::reconfigureCallback, this, _1, _2);
-  config_server.setCallback(f);
-
   // Wait for first messages
   while( ros::ok() && !ros::topic::waitForMessage<std_msgs::Float64>(setpoint_topic_, ros::Duration(10.)))
      ROS_WARN_STREAM("Waiting for first setpoint message.");
@@ -157,22 +151,6 @@ void PidObject::printParameters()
   return;
 }
 
-void PidObject::reconfigureCallback(pid::PidConfig& config, uint32_t level)
-{
-  if (first_reconfig_)
-  {
-    getParams(Kp_, config.Kp, config.Kp_scale);
-    getParams(Ki_, config.Ki, config.Ki_scale);
-    getParams(Kd_, config.Kd, config.Kd_scale);
-    first_reconfig_ = false;
-    return;  // Ignore the first call to reconfigure which happens at startup
-  }
-
-  Kp_ = config.Kp * config.Kp_scale;
-  Ki_ = config.Ki * config.Ki_scale;
-  Kd_ = config.Kd * config.Kd_scale;
-  ROS_INFO("Pid reconfigure request: Kp: %f, Ki: %f, Kd: %f", Kp_, Ki_, Kd_);
-}
 
 void PidObject::doCalcs()
 {

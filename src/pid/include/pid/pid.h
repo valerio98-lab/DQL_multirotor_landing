@@ -37,9 +37,7 @@
 #define PID_H
 
 #include "ros/ros.h"
-#include <dynamic_reconfigure/server.h>
 #include <iostream>
-#include <pid/PidConfig.h>
 #include <ros/time.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64.h>
@@ -63,7 +61,7 @@ private:
   void pidEnableCallback(const std_msgs::Bool& pid_enable_msg);
   void plantStateCallback(const std_msgs::Float64& state_msg);
   void printParameters();
-  void reconfigureCallback(pid::PidConfig& config, uint32_t level);
+  // void reconfigureCallback(pid::PidConfig& config, uint32_t level);
   void setpointCallback(const std_msgs::Float64& setpoint_msg);
   bool validateParameters();
 
@@ -76,7 +74,6 @@ private:
   ros::Time prev_time_;
   ros::Time last_setpoint_msg_time_;
   ros::Duration delta_t_;
-  bool first_reconfig_ = true;
 
   double error_integral_ = 0;
   double proportional_ = 0;  // proportional term of output
