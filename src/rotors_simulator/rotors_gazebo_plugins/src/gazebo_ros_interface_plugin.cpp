@@ -27,164 +27,176 @@
 #include <std_msgs/Header.h>
 #include <boost/bind.hpp>
 
-namespace gazebo {
+namespace gazebo
+{
 
-GazeboRosInterfacePlugin::GazeboRosInterfacePlugin()
-    : WorldPlugin(), gz_node_handle_(0), ros_node_handle_(0) {}
+  GazeboRosInterfacePlugin::GazeboRosInterfacePlugin()
+      : WorldPlugin(), gz_node_handle_(0), ros_node_handle_(0) {}
 
-GazeboRosInterfacePlugin::~GazeboRosInterfacePlugin() {
+  GazeboRosInterfacePlugin::~GazeboRosInterfacePlugin()
+  {
 
-  // Shutdown and delete ROS node handle
-  if (ros_node_handle_) {
-    ros_node_handle_->shutdown();
-    delete ros_node_handle_;
-  }
-}
-
-void GazeboRosInterfacePlugin::Load(physics::WorldPtr _world,
-                                    sdf::ElementPtr _sdf) {
-  if (kPrintOnPluginLoad) {
-    gzdbg << __FUNCTION__ << "() called." << std::endl;
+    // Shutdown and delete ROS node handle
+    if (ros_node_handle_)
+    {
+      ros_node_handle_->shutdown();
+      delete ros_node_handle_;
+    }
   }
 
-  /// \brief    Store the pointer to the model.
-  world_ = _world;
+  void GazeboRosInterfacePlugin::Load(physics::WorldPtr _world,
+                                      sdf::ElementPtr _sdf)
+  {
+    if (kPrintOnPluginLoad)
+    {
+      gzdbg << __FUNCTION__ << "() called." << std::endl;
+    }
 
-  // namespace_.clear();
+    /// \brief    Store the pointer to the model.
+    world_ = _world;
 
-  //==============================================//
-  //========== READ IN PARAMS FROM SDF ===========//
-  //==============================================//
+    // namespace_.clear();
 
-  /*if (_sdf->HasElement("robotNamespace"))
-    namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>();
-  else
-    gzerr << "Please specify a robotNamespace.\n";
-  gzdbg << "namespace_ = \"" << namespace_ << "\"." << std::endl;*/
+    //==============================================//
+    //========== READ IN PARAMS FROM SDF ===========//
+    //==============================================//
 
-  // Get Gazebo node handle
-  gz_node_handle_ = transport::NodePtr(new transport::Node());
-  // gz_node_handle_->Init(namespace_);
-  gz_node_handle_->Init();
+    /*if (_sdf->HasElement("robotNamespace"))
+      namespace_ = _sdf->GetElement("robotNamespace")->Get<std::string>();
+    else
+      gzerr << "Please specify a robotNamespace.\n";
+    gzdbg << "namespace_ = \"" << namespace_ << "\"." << std::endl;*/
 
-  // Get ROS node handle
-  // ros_node_handle_ = new ros::NodeHandle(namespace_);
-  ros_node_handle_ = new ros::NodeHandle();
+    // Get Gazebo node handle
+    gz_node_handle_ = transport::NodePtr(new transport::Node());
+    // gz_node_handle_->Init(namespace_);
+    gz_node_handle_->Init();
 
-  // Listen to the update event. This event is broadcast every
-  // simulation iteration.
-  this->updateConnection_ = event::Events::ConnectWorldUpdateBegin(
-      boost::bind(&GazeboRosInterfacePlugin::OnUpdate, this, _1));
+    // Get ROS node handle
+    // ros_node_handle_ = new ros::NodeHandle(namespace_);
+    ros_node_handle_ = new ros::NodeHandle();
 
-  // ============================================ //
-  // === CONNECT GAZEBO TO ROS MESSAGES SETUP === //
-  // ============================================ //
+    // Listen to the update event. This event is broadcast every
+    // simulation iteration.
+    this->updateConnection_ = event::Events::ConnectWorldUpdateBegin(
+        boost::bind(&GazeboRosInterfacePlugin::OnUpdate, this, _1));
 
-  gz_connect_gazebo_to_ros_topic_sub_ = gz_node_handle_->Subscribe(
-      "~/" + kConnectGazeboToRosSubtopic,
-      &GazeboRosInterfacePlugin::GzConnectGazeboToRosTopicMsgCallback, this);
+    // ============================================ //
+    // === CONNECT GAZEBO TO ROS MESSAGES SETUP === //
+    // ============================================ //
 
-  // ============================================ //
-  // === CONNECT ROS TO GAZEBO MESSAGES SETUP === //
-  // ============================================ //
+    gz_connect_gazebo_to_ros_topic_sub_ = gz_node_handle_->Subscribe(
+        "~/" + kConnectGazeboToRosSubtopic,
+        &GazeboRosInterfacePlugin::GzConnectGazeboToRosTopicMsgCallback, this);
 
-  gz_connect_ros_to_gazebo_topic_sub_ = gz_node_handle_->Subscribe(
-      "~/" + kConnectRosToGazeboSubtopic,
-      &GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback, this);
+    // ============================================ //
+    // === CONNECT ROS TO GAZEBO MESSAGES SETUP === //
+    // ============================================ //
 
-  // ============================================ //
-  // ===== BROADCAST TRANSFORM MESSAGE SETUP ==== //
-  // ============================================ //
+    gz_connect_ros_to_gazebo_topic_sub_ = gz_node_handle_->Subscribe(
+        "~/" + kConnectRosToGazeboSubtopic,
+        &GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback, this);
 
-  gz_broadcast_transform_sub_ = gz_node_handle_->Subscribe(
-      "~/" + kBroadcastTransformSubtopic,
-      &GazeboRosInterfacePlugin::GzBroadcastTransformMsgCallback, this);
-}
+    // ============================================ //
+    // ===== BROADCAST TRANSFORM MESSAGE SETUP ==== //
+    // ============================================ //
 
-void GazeboRosInterfacePlugin::OnUpdate(const common::UpdateInfo& _info) {
-  // Do nothing
-  // This plugins actions are all executed through message callbacks.
-}
-
-/// \brief      A helper class that provides storage for additional parameters
-///             that are inserted into the callback.
-/// \details
-///   GazeboMsgT  The type of the message that will be subscribed to the Gazebo
-///   framework.
-template <typename GazeboMsgT>
-struct ConnectHelperStorage {
-  /// \brief    Pointer to the ROS interface plugin class.
-  GazeboRosInterfacePlugin* ptr;
-
-  /// \brief    Function pointer to the subscriber callback with additional
-  /// parameters.
-  void (GazeboRosInterfacePlugin::*fp)(
-      const boost::shared_ptr<GazeboMsgT const>&, ros::Publisher ros_publisher);
-
-  /// \brief    The ROS publisher that is passed into the modified callback.
-  ros::Publisher ros_publisher;
-
-  /// \brief    This is what gets passed into the Gazebo Subscribe method as a
-  ///           callback, and hence can only
-  ///           have one parameter (note boost::bind() does not work with the
-  ///           current Gazebo Subscribe() definitions).
-  void callback(const boost::shared_ptr<GazeboMsgT const>& msg_ptr) {
-    (ptr->*fp)(msg_ptr, ros_publisher);
+    gz_broadcast_transform_sub_ = gz_node_handle_->Subscribe(
+        "~/" + kBroadcastTransformSubtopic,
+        &GazeboRosInterfacePlugin::GzBroadcastTransformMsgCallback, this);
   }
-};
 
-template <typename GazeboMsgT, typename RosMsgT>
-void GazeboRosInterfacePlugin::ConnectHelper(
+  void GazeboRosInterfacePlugin::OnUpdate(const common::UpdateInfo &_info)
+  {
+    // Do nothing
+    // This plugins actions are all executed through message callbacks.
+  }
+
+  /// \brief      A helper class that provides storage for additional parameters
+  ///             that are inserted into the callback.
+  /// \details
+  ///   GazeboMsgT  The type of the message that will be subscribed to the Gazebo
+  ///   framework.
+  template <typename GazeboMsgT>
+  struct ConnectHelperStorage
+  {
+    /// \brief    Pointer to the ROS interface plugin class.
+    GazeboRosInterfacePlugin *ptr;
+
+    /// \brief    Function pointer to the subscriber callback with additional
+    /// parameters.
     void (GazeboRosInterfacePlugin::*fp)(
-        const boost::shared_ptr<GazeboMsgT const>&, ros::Publisher),
-    GazeboRosInterfacePlugin* ptr, std::string gazeboNamespace,
-    std::string gazeboTopicName, std::string rosTopicName,
-    transport::NodePtr gz_node_handle) {
-  // One map will be created for each Gazebo message type
-  static std::map<std::string, ConnectHelperStorage<GazeboMsgT> > callback_map;
+        const boost::shared_ptr<GazeboMsgT const> &, ros::Publisher ros_publisher);
 
-  // Create ROS publisher
-  ros::Publisher ros_publisher =
-      ros_node_handle_->advertise<RosMsgT>(rosTopicName, 1);
+    /// \brief    The ROS publisher that is passed into the modified callback.
+    ros::Publisher ros_publisher;
 
-  auto callback_entry = callback_map.emplace(
-      gazeboTopicName,
-      ConnectHelperStorage<GazeboMsgT>{ptr, fp, ros_publisher});
+    /// \brief    This is what gets passed into the Gazebo Subscribe method as a
+    ///           callback, and hence can only
+    ///           have one parameter (note boost::bind() does not work with the
+    ///           current Gazebo Subscribe() definitions).
+    void callback(const boost::shared_ptr<GazeboMsgT const> &msg_ptr)
+    {
+      (ptr->*fp)(msg_ptr, ros_publisher);
+    }
+  };
 
-  // Check if element was already present
-  if (!callback_entry.second)
-    gzerr << "Tried to add element to map but the gazebo topic name was "
-             "already present in map."
-          << std::endl;
+  template <typename GazeboMsgT, typename RosMsgT>
+  void GazeboRosInterfacePlugin::ConnectHelper(
+      void (GazeboRosInterfacePlugin::*fp)(
+          const boost::shared_ptr<GazeboMsgT const> &, ros::Publisher),
+      GazeboRosInterfacePlugin *ptr, std::string gazeboNamespace,
+      std::string gazeboTopicName, std::string rosTopicName,
+      transport::NodePtr gz_node_handle)
+  {
+    // One map will be created for each Gazebo message type
+    static std::map<std::string, ConnectHelperStorage<GazeboMsgT>> callback_map;
 
-  // Create subscriber
-  gazebo::transport::SubscriberPtr subscriberPtr;
-  subscriberPtr = gz_node_handle->Subscribe(
-      gazeboTopicName, &ConnectHelperStorage<GazeboMsgT>::callback,
-      &callback_entry.first->second);
+    // Create ROS publisher
+    ros::Publisher ros_publisher =
+        ros_node_handle_->advertise<RosMsgT>(rosTopicName, 1);
 
-  // Save a reference to the subscriber pointer so subscriber
-  // won't be deleted.
-  subscriberPtrs_.push_back(subscriberPtr);
-}
+    auto callback_entry = callback_map.emplace(
+        gazeboTopicName,
+        ConnectHelperStorage<GazeboMsgT>{ptr, fp, ros_publisher});
 
-void GazeboRosInterfacePlugin::GzConnectGazeboToRosTopicMsgCallback(
-    GzConnectGazeboToRosTopicMsgPtr& gz_connect_gazebo_to_ros_topic_msg) {
-  if (kPrintOnMsgCallback) {
-    gzdbg << __FUNCTION__ << "() called." << std::endl;
+    // Check if element was already present
+    if (!callback_entry.second)
+      gzerr << "Tried to add element to map but the gazebo topic name was "
+               "already present in map."
+            << std::endl;
+
+    // Create subscriber
+    gazebo::transport::SubscriberPtr subscriberPtr;
+    subscriberPtr = gz_node_handle->Subscribe(
+        gazeboTopicName, &ConnectHelperStorage<GazeboMsgT>::callback,
+        &callback_entry.first->second);
+
+    // Save a reference to the subscriber pointer so subscriber
+    // won't be deleted.
+    subscriberPtrs_.push_back(subscriberPtr);
   }
 
-  const std::string gazeboNamespace =
-      "";  // gz_connect_gazebo_to_ros_topic_msg->gazebo_namespace();
-  const std::string gazeboTopicName =
-      gz_connect_gazebo_to_ros_topic_msg->gazebo_topic();
-  const std::string rosTopicName =
-      gz_connect_gazebo_to_ros_topic_msg->ros_topic();
+  void GazeboRosInterfacePlugin::GzConnectGazeboToRosTopicMsgCallback(
+      GzConnectGazeboToRosTopicMsgPtr &gz_connect_gazebo_to_ros_topic_msg)
+  {
+    if (kPrintOnMsgCallback)
+    {
+      gzdbg << __FUNCTION__ << "() called." << std::endl;
+    }
 
-  gzdbg << "Connecting Gazebo topic \"" << gazeboTopicName
-        << "\" to ROS topic \"" << rosTopicName << "\"." << std::endl;
+    const std::string gazeboNamespace =
+        ""; // gz_connect_gazebo_to_ros_topic_msg->gazebo_namespace();
+    const std::string gazeboTopicName =
+        gz_connect_gazebo_to_ros_topic_msg->gazebo_topic();
+    const std::string rosTopicName =
+        gz_connect_gazebo_to_ros_topic_msg->ros_topic();
 
-  switch (gz_connect_gazebo_to_ros_topic_msg->msgtype()) {
+    gzdbg << "Connecting Gazebo topic \"" << gazeboTopicName
+          << "\" to ROS topic \"" << rosTopicName << "\"." << std::endl;
+
+    switch (gz_connect_gazebo_to_ros_topic_msg->msgtype())
+    {
     case gz_std_msgs::ConnectGazeboToRosTopic::ACTUATORS:
       ConnectHelper<gz_sensor_msgs::Actuators, mav_msgs::Actuators>(
           &GazeboRosInterfacePlugin::GzActuatorsMsgCallback, this,
@@ -195,16 +207,7 @@ void GazeboRosInterfacePlugin::GzConnectGazeboToRosTopicMsgCallback(
           &GazeboRosInterfacePlugin::GzFloat32MsgCallback, this,
           gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
       break;
-    case gz_std_msgs::ConnectGazeboToRosTopic::FLUID_PRESSURE:
-      ConnectHelper<gz_sensor_msgs::FluidPressure, sensor_msgs::FluidPressure>(
-          &GazeboRosInterfacePlugin::GzFluidPressureMsgCallback, this,
-          gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
-      break;
-    case gz_std_msgs::ConnectGazeboToRosTopic::IMU:
-      ConnectHelper<gz_sensor_msgs::Imu, sensor_msgs::Imu>(
-          &GazeboRosInterfacePlugin::GzImuMsgCallback, this, gazeboNamespace,
-          gazeboTopicName, rosTopicName, gz_node_handle_);
-      break;
+
     case gz_std_msgs::ConnectGazeboToRosTopic::JOINT_STATE:
       ConnectHelper<gz_sensor_msgs::JointState, sensor_msgs::JointState>(
           &GazeboRosInterfacePlugin::GzJointStateMsgCallback, this,
@@ -271,21 +274,25 @@ void GazeboRosInterfacePlugin::GzConnectGazeboToRosTopicMsgCallback(
       gzthrow("ConnectGazeboToRosTopic message type with enum val = "
               << gz_connect_gazebo_to_ros_topic_msg->msgtype()
               << " is not supported by GazeboRosInterfacePlugin.");
+    }
+
+    gzdbg << __FUNCTION__ << "() finished." << std::endl;
   }
 
-  gzdbg << __FUNCTION__ << "() finished." << std::endl;
-}
+  void GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback(
+      GzConnectRosToGazeboTopicMsgPtr &gz_connect_ros_to_gazebo_topic_msg)
+  {
+    if (kPrintOnMsgCallback)
+    {
+      gzdbg << __FUNCTION__ << "() called." << std::endl;
+    }
 
-void GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback(
-    GzConnectRosToGazeboTopicMsgPtr& gz_connect_ros_to_gazebo_topic_msg) {
-  if (kPrintOnMsgCallback) {
-    gzdbg << __FUNCTION__ << "() called." << std::endl;
-  }
+    static std::vector<ros::Subscriber> ros_subscribers;
 
-  static std::vector<ros::Subscriber> ros_subscribers;
-
-  switch (gz_connect_ros_to_gazebo_topic_msg->msgtype()) {
-    case gz_std_msgs::ConnectRosToGazeboTopic::ACTUATORS: {
+    switch (gz_connect_ros_to_gazebo_topic_msg->msgtype())
+    {
+    case gz_std_msgs::ConnectRosToGazeboTopic::ACTUATORS:
+    {
       gazebo::transport::PublisherPtr gz_publisher_ptr =
           gz_node_handle_->Advertise<gz_sensor_msgs::Actuators>(
               gz_connect_ros_to_gazebo_topic_msg->gazebo_topic(), 1);
@@ -303,7 +310,8 @@ void GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback(
 
       break;
     }
-    case gz_std_msgs::ConnectRosToGazeboTopic::COMMAND_MOTOR_SPEED: {
+    case gz_std_msgs::ConnectRosToGazeboTopic::COMMAND_MOTOR_SPEED:
+    {
       gazebo::transport::PublisherPtr gz_publisher_ptr =
           gz_node_handle_->Advertise<gz_mav_msgs::CommandMotorSpeed>(
               gz_connect_ros_to_gazebo_topic_msg->gazebo_topic(), 1);
@@ -322,7 +330,8 @@ void GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback(
 
       break;
     }
-    case gz_std_msgs::ConnectRosToGazeboTopic::ROLL_PITCH_YAWRATE_THRUST: {
+    case gz_std_msgs::ConnectRosToGazeboTopic::ROLL_PITCH_YAWRATE_THRUST:
+    {
       gazebo::transport::PublisherPtr gz_publisher_ptr =
           gz_node_handle_->Advertise<gz_mav_msgs::RollPitchYawrateThrust>(
               gz_connect_ros_to_gazebo_topic_msg->gazebo_topic(), 1);
@@ -342,7 +351,8 @@ void GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback(
 
       break;
     }
-    case gz_std_msgs::ConnectRosToGazeboTopic::WIND_SPEED: {
+    case gz_std_msgs::ConnectRosToGazeboTopic::WIND_SPEED:
+    {
       gazebo::transport::PublisherPtr gz_publisher_ptr =
           gz_node_handle_->Advertise<gz_mav_msgs::WindSpeed>(
               gz_connect_ros_to_gazebo_topic_msg->gazebo_topic(), 1);
@@ -360,204 +370,140 @@ void GazeboRosInterfacePlugin::GzConnectRosToGazeboTopicMsgCallback(
 
       break;
     }
-    default: {
+    default:
+    {
       gzthrow("ConnectRosToGazeboTopic message type with enum val = "
               << gz_connect_ros_to_gazebo_topic_msg->msgtype()
               << " is not supported by GazeboRosInterfacePlugin.");
     }
-  }
-}
-
-//===========================================================================//
-//==================== HELPER METHODS FOR MSG CONVERSION ====================//
-//===========================================================================//
-
-void GazeboRosInterfacePlugin::ConvertHeaderGzToRos(
-    const gz_std_msgs::Header& gz_header,
-    std_msgs::Header_<std::allocator<void> >* ros_header) {
-  ros_header->stamp.sec = gz_header.stamp().sec();
-  ros_header->stamp.nsec = gz_header.stamp().nsec();
-  ros_header->frame_id = gz_header.frame_id();
-}
-
-void GazeboRosInterfacePlugin::ConvertHeaderRosToGz(
-    const std_msgs::Header_<std::allocator<void> >& ros_header,
-    gz_std_msgs::Header* gz_header) {
-  gz_header->mutable_stamp()->set_sec(ros_header.stamp.sec);
-  gz_header->mutable_stamp()->set_nsec(ros_header.stamp.nsec);
-  gz_header->set_frame_id(ros_header.frame_id);
-}
-
-//===========================================================================//
-//================ GAZEBO -> ROS MSG CALLBACKS/CONVERTERS ===================//
-//===========================================================================//
-
-void GazeboRosInterfacePlugin::GzActuatorsMsgCallback(
-    GzActuatorsMsgPtr& gz_actuators_msg, ros::Publisher ros_publisher) {
-  // We need to convert the Acutuators message from a Gazebo message to a
-  // ROS message and then publish it to the ROS framework
-
-  ConvertHeaderGzToRos(gz_actuators_msg->header(), &ros_actuators_msg_.header);
-
-  ros_actuators_msg_.angular_velocities.resize(
-      gz_actuators_msg->angular_velocities_size());
-  for (int i = 0; i < gz_actuators_msg->angular_velocities_size(); i++) {
-    ros_actuators_msg_.angular_velocities[i] =
-        gz_actuators_msg->angular_velocities(i);
+    }
   }
 
-  // Publish to ROS.
-  ros_publisher.publish(ros_actuators_msg_);
-}
+  //===========================================================================//
+  //==================== HELPER METHODS FOR MSG CONVERSION ====================//
+  //===========================================================================//
 
-void GazeboRosInterfacePlugin::GzFloat32MsgCallback(
-    GzFloat32MsgPtr& gz_float_32_msg, ros::Publisher ros_publisher) {
-  // Convert Gazebo message to ROS message
-  ros_float_32_msg_.data = gz_float_32_msg->data();
-
-  // Publish to ROS
-  ros_publisher.publish(ros_float_32_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzFluidPressureMsgCallback(
-    GzFluidPressureMsgPtr &gz_fluid_pressure_msg,
-    ros::Publisher ros_publisher) {
-  // We need to convert from a Gazebo message to a ROS message,
-  // and then forward the FluidPressure message onto ROS.
-
-  ConvertHeaderGzToRos(gz_fluid_pressure_msg->header(),
-                       &ros_fluid_pressure_msg_.header);
-
-  ros_fluid_pressure_msg_.fluid_pressure =
-      gz_fluid_pressure_msg->fluid_pressure();
-
-  ros_fluid_pressure_msg_.variance = gz_fluid_pressure_msg->variance();
-
-  // Publish to ROS.
-  ros_publisher.publish(ros_fluid_pressure_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzImuMsgCallback(GzImuPtr& gz_imu_msg,
-                                                ros::Publisher ros_publisher) {
-  // We need to convert from a Gazebo message to a ROS message,
-  // and then forward the IMU message onto ROS
-
-  ConvertHeaderGzToRos(gz_imu_msg->header(), &ros_imu_msg_.header);
-
-  ros_imu_msg_.orientation.x = gz_imu_msg->orientation().x();
-  ros_imu_msg_.orientation.y = gz_imu_msg->orientation().y();
-  ros_imu_msg_.orientation.z = gz_imu_msg->orientation().z();
-  ros_imu_msg_.orientation.w = gz_imu_msg->orientation().w();
-
-  // Orientation covariance should have 9 elements, and both the Gazebo and ROS
-  // arrays should be the same size!
-  GZ_ASSERT(gz_imu_msg->orientation_covariance_size() == 9,
-            "The Gazebo IMU message does not have 9 orientation covariance "
-            "elements.");
-  GZ_ASSERT(
-      ros_imu_msg_.orientation_covariance.size() == 9,
-      "The ROS IMU message does not have 9 orientation covariance elements.");
-  for (int i = 0; i < gz_imu_msg->orientation_covariance_size(); i++) {
-    ros_imu_msg_.orientation_covariance[i] =
-        gz_imu_msg->orientation_covariance(i);
+  void GazeboRosInterfacePlugin::ConvertHeaderGzToRos(
+      const gz_std_msgs::Header &gz_header,
+      std_msgs::Header_<std::allocator<void>> *ros_header)
+  {
+    ros_header->stamp.sec = gz_header.stamp().sec();
+    ros_header->stamp.nsec = gz_header.stamp().nsec();
+    ros_header->frame_id = gz_header.frame_id();
   }
 
-  ros_imu_msg_.angular_velocity.x = gz_imu_msg->angular_velocity().x();
-  ros_imu_msg_.angular_velocity.y = gz_imu_msg->angular_velocity().y();
-  ros_imu_msg_.angular_velocity.z = gz_imu_msg->angular_velocity().z();
-
-  GZ_ASSERT(gz_imu_msg->angular_velocity_covariance_size() == 9,
-            "The Gazebo IMU message does not have 9 angular velocity "
-            "covariance elements.");
-  GZ_ASSERT(ros_imu_msg_.angular_velocity_covariance.size() == 9,
-            "The ROS IMU message does not have 9 angular velocity covariance "
-            "elements.");
-  for (int i = 0; i < gz_imu_msg->angular_velocity_covariance_size(); i++) {
-    ros_imu_msg_.angular_velocity_covariance[i] =
-        gz_imu_msg->angular_velocity_covariance(i);
+  void GazeboRosInterfacePlugin::ConvertHeaderRosToGz(
+      const std_msgs::Header_<std::allocator<void>> &ros_header,
+      gz_std_msgs::Header *gz_header)
+  {
+    gz_header->mutable_stamp()->set_sec(ros_header.stamp.sec);
+    gz_header->mutable_stamp()->set_nsec(ros_header.stamp.nsec);
+    gz_header->set_frame_id(ros_header.frame_id);
   }
 
-  ros_imu_msg_.linear_acceleration.x = gz_imu_msg->linear_acceleration().x();
-  ros_imu_msg_.linear_acceleration.y = gz_imu_msg->linear_acceleration().y();
-  ros_imu_msg_.linear_acceleration.z = gz_imu_msg->linear_acceleration().z();
+  //===========================================================================//
+  //================ GAZEBO -> ROS MSG CALLBACKS/CONVERTERS ===================//
+  //===========================================================================//
 
-  GZ_ASSERT(gz_imu_msg->linear_acceleration_covariance_size() == 9,
-            "The Gazebo IMU message does not have 9 linear acceleration "
-            "covariance elements.");
-  GZ_ASSERT(ros_imu_msg_.linear_acceleration_covariance.size() == 9,
-            "The ROS IMU message does not have 9 linear acceleration "
-            "covariance elements.");
-  for (int i = 0; i < gz_imu_msg->linear_acceleration_covariance_size(); i++) {
-    ros_imu_msg_.linear_acceleration_covariance[i] =
-        gz_imu_msg->linear_acceleration_covariance(i);
+  void GazeboRosInterfacePlugin::GzActuatorsMsgCallback(
+      GzActuatorsMsgPtr &gz_actuators_msg, ros::Publisher ros_publisher)
+  {
+    // We need to convert the Acutuators message from a Gazebo message to a
+    // ROS message and then publish it to the ROS framework
+
+    ConvertHeaderGzToRos(gz_actuators_msg->header(), &ros_actuators_msg_.header);
+
+    ros_actuators_msg_.angular_velocities.resize(
+        gz_actuators_msg->angular_velocities_size());
+    for (int i = 0; i < gz_actuators_msg->angular_velocities_size(); i++)
+    {
+      ros_actuators_msg_.angular_velocities[i] =
+          gz_actuators_msg->angular_velocities(i);
+    }
+
+    // Publish to ROS.
+    ros_publisher.publish(ros_actuators_msg_);
   }
 
-  // Publish to ROS.
-  ros_publisher.publish(ros_imu_msg_);
-}
+  void GazeboRosInterfacePlugin::GzFloat32MsgCallback(
+      GzFloat32MsgPtr &gz_float_32_msg, ros::Publisher ros_publisher)
+  {
+    // Convert Gazebo message to ROS message
+    ros_float_32_msg_.data = gz_float_32_msg->data();
 
-void GazeboRosInterfacePlugin::GzJointStateMsgCallback(
-    GzJointStateMsgPtr& gz_joint_state_msg, ros::Publisher ros_publisher) {
-  ConvertHeaderGzToRos(gz_joint_state_msg->header(),
-                       &ros_joint_state_msg_.header);
-
-  ros_joint_state_msg_.name.resize(gz_joint_state_msg->name_size());
-  for (int i = 0; i < gz_joint_state_msg->name_size(); i++) {
-    ros_joint_state_msg_.name[i] = gz_joint_state_msg->name(i);
+    // Publish to ROS
+    ros_publisher.publish(ros_float_32_msg_);
   }
 
-  ros_joint_state_msg_.position.resize(gz_joint_state_msg->position_size());
-  for (int i = 0; i < gz_joint_state_msg->position_size(); i++) {
-    ros_joint_state_msg_.position[i] = gz_joint_state_msg->position(i);
+  void GazeboRosInterfacePlugin::GzJointStateMsgCallback(
+      GzJointStateMsgPtr &gz_joint_state_msg, ros::Publisher ros_publisher)
+  {
+    ConvertHeaderGzToRos(gz_joint_state_msg->header(),
+                         &ros_joint_state_msg_.header);
+
+    ros_joint_state_msg_.name.resize(gz_joint_state_msg->name_size());
+    for (int i = 0; i < gz_joint_state_msg->name_size(); i++)
+    {
+      ros_joint_state_msg_.name[i] = gz_joint_state_msg->name(i);
+    }
+
+    ros_joint_state_msg_.position.resize(gz_joint_state_msg->position_size());
+    for (int i = 0; i < gz_joint_state_msg->position_size(); i++)
+    {
+      ros_joint_state_msg_.position[i] = gz_joint_state_msg->position(i);
+    }
+
+    // Publish to ROS.
+    ros_publisher.publish(ros_joint_state_msg_);
   }
 
-  // Publish to ROS.
-  ros_publisher.publish(ros_joint_state_msg_);
-}
+  void GazeboRosInterfacePlugin::GzMagneticFieldMsgCallback(
+      GzMagneticFieldMsgPtr &gz_magnetic_field_msg,
+      ros::Publisher ros_publisher)
+  {
+    // We need to convert from a Gazebo message to a ROS message,
+    // and then forward the MagneticField message onto ROS
 
-void GazeboRosInterfacePlugin::GzMagneticFieldMsgCallback(
-    GzMagneticFieldMsgPtr& gz_magnetic_field_msg,
-    ros::Publisher ros_publisher) {
-  // We need to convert from a Gazebo message to a ROS message,
-  // and then forward the MagneticField message onto ROS
+    ConvertHeaderGzToRos(gz_magnetic_field_msg->header(),
+                         &ros_magnetic_field_msg_.header);
 
-  ConvertHeaderGzToRos(gz_magnetic_field_msg->header(),
-                       &ros_magnetic_field_msg_.header);
+    ros_magnetic_field_msg_.magnetic_field.x =
+        gz_magnetic_field_msg->magnetic_field().x();
+    ros_magnetic_field_msg_.magnetic_field.y =
+        gz_magnetic_field_msg->magnetic_field().y();
+    ros_magnetic_field_msg_.magnetic_field.z =
+        gz_magnetic_field_msg->magnetic_field().z();
 
-  ros_magnetic_field_msg_.magnetic_field.x =
-      gz_magnetic_field_msg->magnetic_field().x();
-  ros_magnetic_field_msg_.magnetic_field.y =
-      gz_magnetic_field_msg->magnetic_field().y();
-  ros_magnetic_field_msg_.magnetic_field.z =
-      gz_magnetic_field_msg->magnetic_field().z();
+    // Position covariance should have 9 elements, and both the Gazebo and ROS
+    // arrays should be the same size!
+    GZ_ASSERT(gz_magnetic_field_msg->magnetic_field_covariance_size() == 9,
+              "The Gazebo MagneticField message does not have 9 magnetic field "
+              "covariance elements.");
+    GZ_ASSERT(ros_magnetic_field_msg_.magnetic_field_covariance.size() == 9,
+              "The ROS MagneticField message does not have 9 magnetic field "
+              "covariance elements.");
+    for (int i = 0; i < gz_magnetic_field_msg->magnetic_field_covariance_size();
+         i++)
+    {
+      ros_magnetic_field_msg_.magnetic_field_covariance[i] =
+          gz_magnetic_field_msg->magnetic_field_covariance(i);
+    }
 
-  // Position covariance should have 9 elements, and both the Gazebo and ROS
-  // arrays should be the same size!
-  GZ_ASSERT(gz_magnetic_field_msg->magnetic_field_covariance_size() == 9,
-            "The Gazebo MagneticField message does not have 9 magnetic field "
-            "covariance elements.");
-  GZ_ASSERT(ros_magnetic_field_msg_.magnetic_field_covariance.size() == 9,
-            "The ROS MagneticField message does not have 9 magnetic field "
-            "covariance elements.");
-  for (int i = 0; i < gz_magnetic_field_msg->magnetic_field_covariance_size();
-       i++) {
-    ros_magnetic_field_msg_.magnetic_field_covariance[i] =
-        gz_magnetic_field_msg->magnetic_field_covariance(i);
+    // Publish to ROS.
+    ros_publisher.publish(ros_magnetic_field_msg_);
   }
 
-  // Publish to ROS.
-  ros_publisher.publish(ros_magnetic_field_msg_);
-}
+  void GazeboRosInterfacePlugin::GzNavSatFixCallback(
+      GzNavSatFixPtr &gz_nav_sat_fix_msg, ros::Publisher ros_publisher)
+  {
+    // We need to convert from a Gazebo message to a ROS message, and then forward
+    // the NavSatFix message to ROS.
 
-void GazeboRosInterfacePlugin::GzNavSatFixCallback(
-    GzNavSatFixPtr& gz_nav_sat_fix_msg, ros::Publisher ros_publisher) {
-  // We need to convert from a Gazebo message to a ROS message, and then forward
-  // the NavSatFix message to ROS.
+    ConvertHeaderGzToRos(gz_nav_sat_fix_msg->header(),
+                         &ros_nav_sat_fix_msg_.header);
 
-  ConvertHeaderGzToRos(gz_nav_sat_fix_msg->header(),
-                       &ros_nav_sat_fix_msg_.header);
-
-  switch (gz_nav_sat_fix_msg->service()) {
+    switch (gz_nav_sat_fix_msg->service())
+    {
     case gz_sensor_msgs::NavSatFix::SERVICE_GPS:
       ros_nav_sat_fix_msg_.status.service =
           sensor_msgs::NavSatStatus::SERVICE_GPS;
@@ -578,9 +524,10 @@ void GazeboRosInterfacePlugin::GzNavSatFixCallback(
       gzthrow(
           "Specific value of enum type gz_sensor_msgs::NavSatFix::Service is "
           "not yet supported.");
-  }
+    }
 
-  switch (gz_nav_sat_fix_msg->status()) {
+    switch (gz_nav_sat_fix_msg->status())
+    {
     case gz_sensor_msgs::NavSatFix::STATUS_NO_FIX:
       ros_nav_sat_fix_msg_.status.status =
           sensor_msgs::NavSatStatus::STATUS_NO_FIX;
@@ -601,13 +548,14 @@ void GazeboRosInterfacePlugin::GzNavSatFixCallback(
       gzthrow(
           "Specific value of enum type gz_sensor_msgs::NavSatFix::Status is "
           "not yet supported.");
-  }
+    }
 
-  ros_nav_sat_fix_msg_.latitude = gz_nav_sat_fix_msg->latitude();
-  ros_nav_sat_fix_msg_.longitude = gz_nav_sat_fix_msg->longitude();
-  ros_nav_sat_fix_msg_.altitude = gz_nav_sat_fix_msg->altitude();
+    ros_nav_sat_fix_msg_.latitude = gz_nav_sat_fix_msg->latitude();
+    ros_nav_sat_fix_msg_.longitude = gz_nav_sat_fix_msg->longitude();
+    ros_nav_sat_fix_msg_.altitude = gz_nav_sat_fix_msg->altitude();
 
-  switch (gz_nav_sat_fix_msg->position_covariance_type()) {
+    switch (gz_nav_sat_fix_msg->position_covariance_type())
+    {
     case gz_sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN:
       ros_nav_sat_fix_msg_.position_covariance_type =
           sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
@@ -629,427 +577,448 @@ void GazeboRosInterfacePlugin::GzNavSatFixCallback(
           "Specific value of enum type "
           "gz_sensor_msgs::NavSatFix::PositionCovarianceType is not yet "
           "supported.");
+    }
+
+    // Position covariance should have 9 elements, and both the Gazebo and ROS
+    // arrays should be the same size!
+    GZ_ASSERT(gz_nav_sat_fix_msg->position_covariance_size() == 9,
+              "The Gazebo NavSatFix message does not have 9 position covariance "
+              "elements.");
+    GZ_ASSERT(ros_nav_sat_fix_msg_.position_covariance.size() == 9,
+              "The ROS NavSatFix message does not have 9 position covariance "
+              "elements.");
+    for (int i = 0; i < gz_nav_sat_fix_msg->position_covariance_size(); i++)
+    {
+      ros_nav_sat_fix_msg_.position_covariance[i] =
+          gz_nav_sat_fix_msg->position_covariance(i);
+    }
+
+    // Publish to ROS.
+    ros_publisher.publish(ros_nav_sat_fix_msg_);
   }
 
-  // Position covariance should have 9 elements, and both the Gazebo and ROS
-  // arrays should be the same size!
-  GZ_ASSERT(gz_nav_sat_fix_msg->position_covariance_size() == 9,
-            "The Gazebo NavSatFix message does not have 9 position covariance "
-            "elements.");
-  GZ_ASSERT(ros_nav_sat_fix_msg_.position_covariance.size() == 9,
-            "The ROS NavSatFix message does not have 9 position covariance "
-            "elements.");
-  for (int i = 0; i < gz_nav_sat_fix_msg->position_covariance_size(); i++) {
-    ros_nav_sat_fix_msg_.position_covariance[i] =
-        gz_nav_sat_fix_msg->position_covariance(i);
+  void GazeboRosInterfacePlugin::GzOdometryMsgCallback(
+      GzOdometryMsgPtr &gz_odometry_msg, ros::Publisher ros_publisher)
+  {
+    // We need to convert from a Gazebo message to a ROS message, and then forward
+    // the Odometry message to ROS.
+
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_odometry_msg->header(), &ros_odometry_msg_.header);
+
+    ros_odometry_msg_.child_frame_id = gz_odometry_msg->child_frame_id();
+
+    // ============================================ //
+    // ===================== POSE ================= //
+    // ============================================ //
+    ros_odometry_msg_.pose.pose.position.x =
+        gz_odometry_msg->pose().pose().position().x();
+    ros_odometry_msg_.pose.pose.position.y =
+        gz_odometry_msg->pose().pose().position().y();
+    ros_odometry_msg_.pose.pose.position.z =
+        gz_odometry_msg->pose().pose().position().z();
+
+    ros_odometry_msg_.pose.pose.orientation.w =
+        gz_odometry_msg->pose().pose().orientation().w();
+    ros_odometry_msg_.pose.pose.orientation.x =
+        gz_odometry_msg->pose().pose().orientation().x();
+    ros_odometry_msg_.pose.pose.orientation.y =
+        gz_odometry_msg->pose().pose().orientation().y();
+    ros_odometry_msg_.pose.pose.orientation.z =
+        gz_odometry_msg->pose().pose().orientation().z();
+
+    for (int i = 0; i < gz_odometry_msg->pose().covariance_size(); i++)
+    {
+      ros_odometry_msg_.pose.covariance[i] =
+          gz_odometry_msg->pose().covariance(i);
+    }
+
+    // ============================================ //
+    // ===================== TWIST ================ //
+    // ============================================ //
+    ros_odometry_msg_.twist.twist.linear.x =
+        gz_odometry_msg->twist().twist().linear().x();
+    ros_odometry_msg_.twist.twist.linear.y =
+        gz_odometry_msg->twist().twist().linear().y();
+    ros_odometry_msg_.twist.twist.linear.z =
+        gz_odometry_msg->twist().twist().linear().z();
+
+    ros_odometry_msg_.twist.twist.angular.x =
+        gz_odometry_msg->twist().twist().angular().x();
+    ros_odometry_msg_.twist.twist.angular.y =
+        gz_odometry_msg->twist().twist().angular().y();
+    ros_odometry_msg_.twist.twist.angular.z =
+        gz_odometry_msg->twist().twist().angular().z();
+
+    for (int i = 0; i < gz_odometry_msg->twist().covariance_size(); i++)
+    {
+      ros_odometry_msg_.twist.covariance[i] =
+          gz_odometry_msg->twist().covariance(i);
+    }
+
+    // Publish to ROS framework.
+    ros_publisher.publish(ros_odometry_msg_);
   }
 
-  // Publish to ROS.
-  ros_publisher.publish(ros_nav_sat_fix_msg_);
-}
+  void GazeboRosInterfacePlugin::GzPoseMsgCallback(GzPoseMsgPtr &gz_pose_msg,
+                                                   ros::Publisher ros_publisher)
+  {
+    ros_pose_msg_.position.x = gz_pose_msg->position().x();
+    ros_pose_msg_.position.y = gz_pose_msg->position().y();
+    ros_pose_msg_.position.z = gz_pose_msg->position().z();
 
-void GazeboRosInterfacePlugin::GzOdometryMsgCallback(
-    GzOdometryMsgPtr& gz_odometry_msg, ros::Publisher ros_publisher) {
-  // We need to convert from a Gazebo message to a ROS message, and then forward
-  // the Odometry message to ROS.
+    ros_pose_msg_.orientation.w = gz_pose_msg->orientation().w();
+    ros_pose_msg_.orientation.x = gz_pose_msg->orientation().x();
+    ros_pose_msg_.orientation.y = gz_pose_msg->orientation().y();
+    ros_pose_msg_.orientation.z = gz_pose_msg->orientation().z();
 
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_odometry_msg->header(), &ros_odometry_msg_.header);
-
-  ros_odometry_msg_.child_frame_id = gz_odometry_msg->child_frame_id();
-
-  // ============================================ //
-  // ===================== POSE ================= //
-  // ============================================ //
-  ros_odometry_msg_.pose.pose.position.x =
-      gz_odometry_msg->pose().pose().position().x();
-  ros_odometry_msg_.pose.pose.position.y =
-      gz_odometry_msg->pose().pose().position().y();
-  ros_odometry_msg_.pose.pose.position.z =
-      gz_odometry_msg->pose().pose().position().z();
-
-  ros_odometry_msg_.pose.pose.orientation.w =
-      gz_odometry_msg->pose().pose().orientation().w();
-  ros_odometry_msg_.pose.pose.orientation.x =
-      gz_odometry_msg->pose().pose().orientation().x();
-  ros_odometry_msg_.pose.pose.orientation.y =
-      gz_odometry_msg->pose().pose().orientation().y();
-  ros_odometry_msg_.pose.pose.orientation.z =
-      gz_odometry_msg->pose().pose().orientation().z();
-
-  for (int i = 0; i < gz_odometry_msg->pose().covariance_size(); i++) {
-    ros_odometry_msg_.pose.covariance[i] =
-        gz_odometry_msg->pose().covariance(i);
+    ros_publisher.publish(ros_pose_msg_);
   }
 
-  // ============================================ //
-  // ===================== TWIST ================ //
-  // ============================================ //
-  ros_odometry_msg_.twist.twist.linear.x =
-      gz_odometry_msg->twist().twist().linear().x();
-  ros_odometry_msg_.twist.twist.linear.y =
-      gz_odometry_msg->twist().twist().linear().y();
-  ros_odometry_msg_.twist.twist.linear.z =
-      gz_odometry_msg->twist().twist().linear().z();
+  void GazeboRosInterfacePlugin::GzPoseWithCovarianceStampedMsgCallback(
+      GzPoseWithCovarianceStampedMsgPtr &gz_pose_with_covariance_stamped_msg,
+      ros::Publisher ros_publisher)
+  {
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_pose_with_covariance_stamped_msg->header(),
+                         &ros_pose_with_covariance_stamped_msg_.header);
 
-  ros_odometry_msg_.twist.twist.angular.x =
-      gz_odometry_msg->twist().twist().angular().x();
-  ros_odometry_msg_.twist.twist.angular.y =
-      gz_odometry_msg->twist().twist().angular().y();
-  ros_odometry_msg_.twist.twist.angular.z =
-      gz_odometry_msg->twist().twist().angular().z();
+    // ============================================ //
+    // === POSE (both position and orientation) === //
+    // ============================================ //
+    ros_pose_with_covariance_stamped_msg_.pose.pose.position.x =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .position()
+            .x();
+    ros_pose_with_covariance_stamped_msg_.pose.pose.position.y =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .position()
+            .y();
+    ros_pose_with_covariance_stamped_msg_.pose.pose.position.z =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .position()
+            .z();
 
-  for (int i = 0; i < gz_odometry_msg->twist().covariance_size(); i++) {
-    ros_odometry_msg_.twist.covariance[i] =
-        gz_odometry_msg->twist().covariance(i);
+    ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.w =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .orientation()
+            .w();
+    ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.x =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .orientation()
+            .x();
+    ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.y =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .orientation()
+            .y();
+    ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.z =
+        gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+            .pose()
+            .orientation()
+            .z();
+
+    // Covariance should have 36 elements, and both the Gazebo and ROS
+    // arrays should be the same size!
+    GZ_ASSERT(gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+                      .covariance_size() == 36,
+              "The Gazebo PoseWithCovarianceStamped message does not have 9 "
+              "position covariance elements.");
+    GZ_ASSERT(ros_pose_with_covariance_stamped_msg_.pose.covariance.size() == 36,
+              "The ROS PoseWithCovarianceStamped message does not have 9 "
+              "position covariance elements.");
+    for (int i = 0;
+         i < gz_pose_with_covariance_stamped_msg->pose_with_covariance()
+                 .covariance_size();
+         i++)
+    {
+      ros_pose_with_covariance_stamped_msg_.pose.covariance[i] =
+          gz_pose_with_covariance_stamped_msg->pose_with_covariance().covariance(
+              i);
+    }
+
+    ros_publisher.publish(ros_pose_with_covariance_stamped_msg_);
   }
 
-  // Publish to ROS framework.
-  ros_publisher.publish(ros_odometry_msg_);
-}
+  void GazeboRosInterfacePlugin::GzTransformStampedMsgCallback(
+      GzTransformStampedMsgPtr &gz_transform_stamped_msg,
+      ros::Publisher ros_publisher)
+  {
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_transform_stamped_msg->header(),
+                         &ros_transform_stamped_msg_.header);
 
-void GazeboRosInterfacePlugin::GzPoseMsgCallback(GzPoseMsgPtr& gz_pose_msg,
-                                                 ros::Publisher ros_publisher) {
-  ros_pose_msg_.position.x = gz_pose_msg->position().x();
-  ros_pose_msg_.position.y = gz_pose_msg->position().y();
-  ros_pose_msg_.position.z = gz_pose_msg->position().z();
+    // ============================================ //
+    // =========== TRANSFORM, TRANSLATION ========= //
+    // ============================================ //
+    ros_transform_stamped_msg_.transform.translation.x =
+        gz_transform_stamped_msg->transform().translation().x();
+    ros_transform_stamped_msg_.transform.translation.y =
+        gz_transform_stamped_msg->transform().translation().y();
+    ros_transform_stamped_msg_.transform.translation.z =
+        gz_transform_stamped_msg->transform().translation().z();
 
-  ros_pose_msg_.orientation.w = gz_pose_msg->orientation().w();
-  ros_pose_msg_.orientation.x = gz_pose_msg->orientation().x();
-  ros_pose_msg_.orientation.y = gz_pose_msg->orientation().y();
-  ros_pose_msg_.orientation.z = gz_pose_msg->orientation().z();
+    // ============================================ //
+    // ============ TRANSFORM, ROTATION =========== //
+    // ============================================ //
+    ros_transform_stamped_msg_.transform.rotation.w =
+        gz_transform_stamped_msg->transform().rotation().w();
+    ros_transform_stamped_msg_.transform.rotation.x =
+        gz_transform_stamped_msg->transform().rotation().x();
+    ros_transform_stamped_msg_.transform.rotation.y =
+        gz_transform_stamped_msg->transform().rotation().y();
+    ros_transform_stamped_msg_.transform.rotation.z =
+        gz_transform_stamped_msg->transform().rotation().z();
 
-  ros_publisher.publish(ros_pose_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzPoseWithCovarianceStampedMsgCallback(
-    GzPoseWithCovarianceStampedMsgPtr& gz_pose_with_covariance_stamped_msg,
-    ros::Publisher ros_publisher) {
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_pose_with_covariance_stamped_msg->header(),
-                       &ros_pose_with_covariance_stamped_msg_.header);
-
-  // ============================================ //
-  // === POSE (both position and orientation) === //
-  // ============================================ //
-  ros_pose_with_covariance_stamped_msg_.pose.pose.position.x =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .position()
-          .x();
-  ros_pose_with_covariance_stamped_msg_.pose.pose.position.y =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .position()
-          .y();
-  ros_pose_with_covariance_stamped_msg_.pose.pose.position.z =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .position()
-          .z();
-
-  ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.w =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .orientation()
-          .w();
-  ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.x =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .orientation()
-          .x();
-  ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.y =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .orientation()
-          .y();
-  ros_pose_with_covariance_stamped_msg_.pose.pose.orientation.z =
-      gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-          .pose()
-          .orientation()
-          .z();
-
-  // Covariance should have 36 elements, and both the Gazebo and ROS
-  // arrays should be the same size!
-  GZ_ASSERT(gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-                    .covariance_size() == 36,
-            "The Gazebo PoseWithCovarianceStamped message does not have 9 "
-            "position covariance elements.");
-  GZ_ASSERT(ros_pose_with_covariance_stamped_msg_.pose.covariance.size() == 36,
-            "The ROS PoseWithCovarianceStamped message does not have 9 "
-            "position covariance elements.");
-  for (int i = 0;
-       i < gz_pose_with_covariance_stamped_msg->pose_with_covariance()
-               .covariance_size();
-       i++) {
-    ros_pose_with_covariance_stamped_msg_.pose.covariance[i] =
-        gz_pose_with_covariance_stamped_msg->pose_with_covariance().covariance(
-            i);
+    ros_publisher.publish(ros_transform_stamped_msg_);
   }
 
-  ros_publisher.publish(ros_pose_with_covariance_stamped_msg_);
-}
+  void GazeboRosInterfacePlugin::GzTwistStampedMsgCallback(
+      GzTwistStampedMsgPtr &gz_twist_stamped_msg, ros::Publisher ros_publisher)
+  {
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_twist_stamped_msg->header(),
+                         &ros_twist_stamped_msg_.header);
 
-void GazeboRosInterfacePlugin::GzTransformStampedMsgCallback(
-    GzTransformStampedMsgPtr& gz_transform_stamped_msg,
-    ros::Publisher ros_publisher) {
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_transform_stamped_msg->header(),
-                       &ros_transform_stamped_msg_.header);
+    // ============================================ //
+    // =================== TWIST ================== //
+    // ============================================ //
 
-  // ============================================ //
-  // =========== TRANSFORM, TRANSLATION ========= //
-  // ============================================ //
-  ros_transform_stamped_msg_.transform.translation.x =
-      gz_transform_stamped_msg->transform().translation().x();
-  ros_transform_stamped_msg_.transform.translation.y =
-      gz_transform_stamped_msg->transform().translation().y();
-  ros_transform_stamped_msg_.transform.translation.z =
-      gz_transform_stamped_msg->transform().translation().z();
+    ros_twist_stamped_msg_.twist.linear.x =
+        gz_twist_stamped_msg->twist().linear().x();
+    ros_twist_stamped_msg_.twist.linear.y =
+        gz_twist_stamped_msg->twist().linear().y();
+    ros_twist_stamped_msg_.twist.linear.z =
+        gz_twist_stamped_msg->twist().linear().z();
 
-  // ============================================ //
-  // ============ TRANSFORM, ROTATION =========== //
-  // ============================================ //
-  ros_transform_stamped_msg_.transform.rotation.w =
-      gz_transform_stamped_msg->transform().rotation().w();
-  ros_transform_stamped_msg_.transform.rotation.x =
-      gz_transform_stamped_msg->transform().rotation().x();
-  ros_transform_stamped_msg_.transform.rotation.y =
-      gz_transform_stamped_msg->transform().rotation().y();
-  ros_transform_stamped_msg_.transform.rotation.z =
-      gz_transform_stamped_msg->transform().rotation().z();
+    ros_twist_stamped_msg_.twist.angular.x =
+        gz_twist_stamped_msg->twist().angular().x();
+    ros_twist_stamped_msg_.twist.angular.y =
+        gz_twist_stamped_msg->twist().angular().y();
+    ros_twist_stamped_msg_.twist.angular.z =
+        gz_twist_stamped_msg->twist().angular().z();
 
-  ros_publisher.publish(ros_transform_stamped_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzTwistStampedMsgCallback(
-    GzTwistStampedMsgPtr& gz_twist_stamped_msg, ros::Publisher ros_publisher) {
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_twist_stamped_msg->header(),
-                       &ros_twist_stamped_msg_.header);
-
-  // ============================================ //
-  // =================== TWIST ================== //
-  // ============================================ //
-
-  ros_twist_stamped_msg_.twist.linear.x =
-      gz_twist_stamped_msg->twist().linear().x();
-  ros_twist_stamped_msg_.twist.linear.y =
-      gz_twist_stamped_msg->twist().linear().y();
-  ros_twist_stamped_msg_.twist.linear.z =
-      gz_twist_stamped_msg->twist().linear().z();
-
-  ros_twist_stamped_msg_.twist.angular.x =
-      gz_twist_stamped_msg->twist().angular().x();
-  ros_twist_stamped_msg_.twist.angular.y =
-      gz_twist_stamped_msg->twist().angular().y();
-  ros_twist_stamped_msg_.twist.angular.z =
-      gz_twist_stamped_msg->twist().angular().z();
-
-  ros_publisher.publish(ros_twist_stamped_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzVector3dStampedMsgCallback(
-    GzVector3dStampedMsgPtr& gz_vector_3d_stamped_msg,
-    ros::Publisher ros_publisher) {
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_vector_3d_stamped_msg->header(),
-                       &ros_position_stamped_msg_.header);
-
-  // ============================================ //
-  // ================== POSITION ================ //
-  // ============================================ //
-
-  ros_position_stamped_msg_.point.x = gz_vector_3d_stamped_msg->position().x();
-  ros_position_stamped_msg_.point.y = gz_vector_3d_stamped_msg->position().y();
-  ros_position_stamped_msg_.point.z = gz_vector_3d_stamped_msg->position().z();
-
-  ros_publisher.publish(ros_position_stamped_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzWindSpeedMsgCallback(
-    GzWindSpeedMsgPtr& gz_wind_speed_msg,
-    ros::Publisher ros_publisher) {
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_wind_speed_msg->header(),
-                       &ros_wind_speed_msg_.header);
-
-  // ============================================ //
-  // ================== VELOCITY ================ //
-  // ============================================ //
-  ros_wind_speed_msg_.velocity.x =
-      gz_wind_speed_msg->velocity().x();
-  ros_wind_speed_msg_.velocity.y =
-      gz_wind_speed_msg->velocity().y();
-  ros_wind_speed_msg_.velocity.z =
-      gz_wind_speed_msg->velocity().z();
-  ros_publisher.publish(ros_wind_speed_msg_);
-}
-
-void GazeboRosInterfacePlugin::GzWrenchStampedMsgCallback(
-    GzWrenchStampedMsgPtr& gz_wrench_stamped_msg,
-    ros::Publisher ros_publisher) {
-  // ============================================ //
-  // =================== HEADER ================= //
-  // ============================================ //
-  ConvertHeaderGzToRos(gz_wrench_stamped_msg->header(),
-                       &ros_wrench_stamped_msg_.header);
-
-  // ============================================ //
-  // =================== FORCE ================== //
-  // ============================================ //
-  ros_wrench_stamped_msg_.wrench.force.x =
-      gz_wrench_stamped_msg->wrench().force().x();
-  ros_wrench_stamped_msg_.wrench.force.y =
-      gz_wrench_stamped_msg->wrench().force().y();
-  ros_wrench_stamped_msg_.wrench.force.z =
-      gz_wrench_stamped_msg->wrench().force().z();
-
-  // ============================================ //
-  // ==================== TORQUE ================ //
-  // ============================================ //
-  ros_wrench_stamped_msg_.wrench.torque.x =
-      gz_wrench_stamped_msg->wrench().torque().x();
-  ros_wrench_stamped_msg_.wrench.torque.y =
-      gz_wrench_stamped_msg->wrench().torque().y();
-  ros_wrench_stamped_msg_.wrench.torque.z =
-      gz_wrench_stamped_msg->wrench().torque().z();
-
-  ros_publisher.publish(ros_wrench_stamped_msg_);
-}
-
-//===========================================================================//
-//================ ROS -> GAZEBO MSG CALLBACKS/CONVERTERS ===================//
-//===========================================================================//
-
-void GazeboRosInterfacePlugin::RosActuatorsMsgCallback(
-    const mav_msgs::ActuatorsConstPtr& ros_actuators_msg_ptr,
-    gazebo::transport::PublisherPtr gz_publisher_ptr) {
-  // Convert ROS message to Gazebo message
-
-  gz_sensor_msgs::Actuators gz_actuators_msg;
-
-  ConvertHeaderRosToGz(ros_actuators_msg_ptr->header,
-                       gz_actuators_msg.mutable_header());
-
-  for (int i = 0; i < ros_actuators_msg_ptr->angles.size(); i++) {
-    gz_actuators_msg.add_angles(
-        ros_actuators_msg_ptr->angles[i]);
+    ros_publisher.publish(ros_twist_stamped_msg_);
   }
 
-  for (int i = 0; i < ros_actuators_msg_ptr->angular_velocities.size(); i++) {
-    gz_actuators_msg.add_angular_velocities(
-        ros_actuators_msg_ptr->angular_velocities[i]);
+  void GazeboRosInterfacePlugin::GzVector3dStampedMsgCallback(
+      GzVector3dStampedMsgPtr &gz_vector_3d_stamped_msg,
+      ros::Publisher ros_publisher)
+  {
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_vector_3d_stamped_msg->header(),
+                         &ros_position_stamped_msg_.header);
+
+    // ============================================ //
+    // ================== POSITION ================ //
+    // ============================================ //
+
+    ros_position_stamped_msg_.point.x = gz_vector_3d_stamped_msg->position().x();
+    ros_position_stamped_msg_.point.y = gz_vector_3d_stamped_msg->position().y();
+    ros_position_stamped_msg_.point.z = gz_vector_3d_stamped_msg->position().z();
+
+    ros_publisher.publish(ros_position_stamped_msg_);
   }
 
-  for (int i = 0; i < ros_actuators_msg_ptr->normalized.size(); i++) {
-    gz_actuators_msg.add_normalized(
-        ros_actuators_msg_ptr->normalized[i]);
+  void GazeboRosInterfacePlugin::GzWindSpeedMsgCallback(
+      GzWindSpeedMsgPtr &gz_wind_speed_msg,
+      ros::Publisher ros_publisher)
+  {
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_wind_speed_msg->header(),
+                         &ros_wind_speed_msg_.header);
+
+    // ============================================ //
+    // ================== VELOCITY ================ //
+    // ============================================ //
+    ros_wind_speed_msg_.velocity.x =
+        gz_wind_speed_msg->velocity().x();
+    ros_wind_speed_msg_.velocity.y =
+        gz_wind_speed_msg->velocity().y();
+    ros_wind_speed_msg_.velocity.z =
+        gz_wind_speed_msg->velocity().z();
+    ros_publisher.publish(ros_wind_speed_msg_);
   }
 
-  // Publish to Gazebo
-  gz_publisher_ptr->Publish(gz_actuators_msg);
-}
+  void GazeboRosInterfacePlugin::GzWrenchStampedMsgCallback(
+      GzWrenchStampedMsgPtr &gz_wrench_stamped_msg,
+      ros::Publisher ros_publisher)
+  {
+    // ============================================ //
+    // =================== HEADER ================= //
+    // ============================================ //
+    ConvertHeaderGzToRos(gz_wrench_stamped_msg->header(),
+                         &ros_wrench_stamped_msg_.header);
 
-void GazeboRosInterfacePlugin::RosCommandMotorSpeedMsgCallback(
-    const mav_msgs::ActuatorsConstPtr& ros_actuators_msg_ptr,
-    gazebo::transport::PublisherPtr gz_publisher_ptr) {
-  // Convert ROS message to Gazebo message
+    // ============================================ //
+    // =================== FORCE ================== //
+    // ============================================ //
+    ros_wrench_stamped_msg_.wrench.force.x =
+        gz_wrench_stamped_msg->wrench().force().x();
+    ros_wrench_stamped_msg_.wrench.force.y =
+        gz_wrench_stamped_msg->wrench().force().y();
+    ros_wrench_stamped_msg_.wrench.force.z =
+        gz_wrench_stamped_msg->wrench().force().z();
 
-  gz_mav_msgs::CommandMotorSpeed gz_command_motor_speed_msg;
+    // ============================================ //
+    // ==================== TORQUE ================ //
+    // ============================================ //
+    ros_wrench_stamped_msg_.wrench.torque.x =
+        gz_wrench_stamped_msg->wrench().torque().x();
+    ros_wrench_stamped_msg_.wrench.torque.y =
+        gz_wrench_stamped_msg->wrench().torque().y();
+    ros_wrench_stamped_msg_.wrench.torque.z =
+        gz_wrench_stamped_msg->wrench().torque().z();
 
-  for (int i = 0; i < ros_actuators_msg_ptr->angular_velocities.size(); i++) {
-    gz_command_motor_speed_msg.add_motor_speed(
-        ros_actuators_msg_ptr->angular_velocities[i]);
+    ros_publisher.publish(ros_wrench_stamped_msg_);
   }
 
-  // Publish to Gazebo
-  gz_publisher_ptr->Publish(gz_command_motor_speed_msg);
-}
+  //===========================================================================//
+  //================ ROS -> GAZEBO MSG CALLBACKS/CONVERTERS ===================//
+  //===========================================================================//
 
-void GazeboRosInterfacePlugin::RosRollPitchYawrateThrustMsgCallback(
-    const mav_msgs::RollPitchYawrateThrustConstPtr&
-        ros_roll_pitch_yawrate_thrust_msg_ptr,
-    gazebo::transport::PublisherPtr gz_publisher_ptr) {
-  // Convert ROS message to Gazebo message
+  void GazeboRosInterfacePlugin::RosActuatorsMsgCallback(
+      const mav_msgs::ActuatorsConstPtr &ros_actuators_msg_ptr,
+      gazebo::transport::PublisherPtr gz_publisher_ptr)
+  {
+    // Convert ROS message to Gazebo message
 
-  gz_mav_msgs::RollPitchYawrateThrust gz_roll_pitch_yawrate_thrust_msg;
+    gz_sensor_msgs::Actuators gz_actuators_msg;
 
-  ConvertHeaderRosToGz(ros_roll_pitch_yawrate_thrust_msg_ptr->header,
-                       gz_roll_pitch_yawrate_thrust_msg.mutable_header());
+    ConvertHeaderRosToGz(ros_actuators_msg_ptr->header,
+                         gz_actuators_msg.mutable_header());
 
-  gz_roll_pitch_yawrate_thrust_msg.set_roll(
-      ros_roll_pitch_yawrate_thrust_msg_ptr->roll);
-  gz_roll_pitch_yawrate_thrust_msg.set_pitch(
-      ros_roll_pitch_yawrate_thrust_msg_ptr->pitch);
-  gz_roll_pitch_yawrate_thrust_msg.set_yaw_rate(
-      ros_roll_pitch_yawrate_thrust_msg_ptr->yaw_rate);
+    for (int i = 0; i < ros_actuators_msg_ptr->angles.size(); i++)
+    {
+      gz_actuators_msg.add_angles(
+          ros_actuators_msg_ptr->angles[i]);
+    }
 
-  gz_roll_pitch_yawrate_thrust_msg.mutable_thrust()->set_x(
-      ros_roll_pitch_yawrate_thrust_msg_ptr->thrust.x);
-  gz_roll_pitch_yawrate_thrust_msg.mutable_thrust()->set_y(
-      ros_roll_pitch_yawrate_thrust_msg_ptr->thrust.y);
-  gz_roll_pitch_yawrate_thrust_msg.mutable_thrust()->set_z(
-      ros_roll_pitch_yawrate_thrust_msg_ptr->thrust.z);
+    for (int i = 0; i < ros_actuators_msg_ptr->angular_velocities.size(); i++)
+    {
+      gz_actuators_msg.add_angular_velocities(
+          ros_actuators_msg_ptr->angular_velocities[i]);
+    }
 
-  // Publish to Gazebo
-  gz_publisher_ptr->Publish(gz_roll_pitch_yawrate_thrust_msg);
-}
+    for (int i = 0; i < ros_actuators_msg_ptr->normalized.size(); i++)
+    {
+      gz_actuators_msg.add_normalized(
+          ros_actuators_msg_ptr->normalized[i]);
+    }
 
-void GazeboRosInterfacePlugin::RosWindSpeedMsgCallback(
-    const rotors_comm::WindSpeedConstPtr& ros_wind_speed_msg_ptr,
-    gazebo::transport::PublisherPtr gz_publisher_ptr) {
-  // Convert ROS message to Gazebo message
+    // Publish to Gazebo
+    gz_publisher_ptr->Publish(gz_actuators_msg);
+  }
 
-  gz_mav_msgs::WindSpeed gz_wind_speed_msg;
+  void GazeboRosInterfacePlugin::RosCommandMotorSpeedMsgCallback(
+      const mav_msgs::ActuatorsConstPtr &ros_actuators_msg_ptr,
+      gazebo::transport::PublisherPtr gz_publisher_ptr)
+  {
+    // Convert ROS message to Gazebo message
 
-  ConvertHeaderRosToGz(ros_wind_speed_msg_ptr->header,
-                       gz_wind_speed_msg.mutable_header());
+    gz_mav_msgs::CommandMotorSpeed gz_command_motor_speed_msg;
 
-  gz_wind_speed_msg.mutable_velocity()->set_x(
-      ros_wind_speed_msg_ptr->velocity.x);
-  gz_wind_speed_msg.mutable_velocity()->set_y(
-      ros_wind_speed_msg_ptr->velocity.y);
-  gz_wind_speed_msg.mutable_velocity()->set_z(
-      ros_wind_speed_msg_ptr->velocity.z);
+    for (int i = 0; i < ros_actuators_msg_ptr->angular_velocities.size(); i++)
+    {
+      gz_command_motor_speed_msg.add_motor_speed(
+          ros_actuators_msg_ptr->angular_velocities[i]);
+    }
 
-  // Publish to Gazebo
-  gz_publisher_ptr->Publish(gz_wind_speed_msg);
-}
+    // Publish to Gazebo
+    gz_publisher_ptr->Publish(gz_command_motor_speed_msg);
+  }
 
-void GazeboRosInterfacePlugin::GzBroadcastTransformMsgCallback(
-    GzTransformStampedWithFrameIdsMsgPtr& broadcast_transform_msg) {
-  ros::Time stamp;
-  stamp.sec = broadcast_transform_msg->header().stamp().sec();
-  stamp.nsec = broadcast_transform_msg->header().stamp().nsec();
+  void GazeboRosInterfacePlugin::RosRollPitchYawrateThrustMsgCallback(
+      const mav_msgs::RollPitchYawrateThrustConstPtr &
+          ros_roll_pitch_yawrate_thrust_msg_ptr,
+      gazebo::transport::PublisherPtr gz_publisher_ptr)
+  {
+    // Convert ROS message to Gazebo message
 
-  tf::Quaternion tf_q_W_L(broadcast_transform_msg->transform().rotation().x(),
-                          broadcast_transform_msg->transform().rotation().y(),
-                          broadcast_transform_msg->transform().rotation().z(),
-                          broadcast_transform_msg->transform().rotation().w());
+    gz_mav_msgs::RollPitchYawrateThrust gz_roll_pitch_yawrate_thrust_msg;
 
-  tf::Vector3 tf_p(broadcast_transform_msg->transform().translation().x(),
-                   broadcast_transform_msg->transform().translation().y(),
-                   broadcast_transform_msg->transform().translation().z());
+    ConvertHeaderRosToGz(ros_roll_pitch_yawrate_thrust_msg_ptr->header,
+                         gz_roll_pitch_yawrate_thrust_msg.mutable_header());
 
-  tf_ = tf::Transform(tf_q_W_L, tf_p);
-  transform_broadcaster_.sendTransform(tf::StampedTransform(
-      tf_, stamp, broadcast_transform_msg->parent_frame_id(),
-      broadcast_transform_msg->child_frame_id()));
-}
+    gz_roll_pitch_yawrate_thrust_msg.set_roll(
+        ros_roll_pitch_yawrate_thrust_msg_ptr->roll);
+    gz_roll_pitch_yawrate_thrust_msg.set_pitch(
+        ros_roll_pitch_yawrate_thrust_msg_ptr->pitch);
+    gz_roll_pitch_yawrate_thrust_msg.set_yaw_rate(
+        ros_roll_pitch_yawrate_thrust_msg_ptr->yaw_rate);
 
-GZ_REGISTER_WORLD_PLUGIN(GazeboRosInterfacePlugin);
+    gz_roll_pitch_yawrate_thrust_msg.mutable_thrust()->set_x(
+        ros_roll_pitch_yawrate_thrust_msg_ptr->thrust.x);
+    gz_roll_pitch_yawrate_thrust_msg.mutable_thrust()->set_y(
+        ros_roll_pitch_yawrate_thrust_msg_ptr->thrust.y);
+    gz_roll_pitch_yawrate_thrust_msg.mutable_thrust()->set_z(
+        ros_roll_pitch_yawrate_thrust_msg_ptr->thrust.z);
 
-}  // namespace gazebo
+    // Publish to Gazebo
+    gz_publisher_ptr->Publish(gz_roll_pitch_yawrate_thrust_msg);
+  }
+
+  void GazeboRosInterfacePlugin::RosWindSpeedMsgCallback(
+      const rotors_comm::WindSpeedConstPtr &ros_wind_speed_msg_ptr,
+      gazebo::transport::PublisherPtr gz_publisher_ptr)
+  {
+    // Convert ROS message to Gazebo message
+
+    gz_mav_msgs::WindSpeed gz_wind_speed_msg;
+
+    ConvertHeaderRosToGz(ros_wind_speed_msg_ptr->header,
+                         gz_wind_speed_msg.mutable_header());
+
+    gz_wind_speed_msg.mutable_velocity()->set_x(
+        ros_wind_speed_msg_ptr->velocity.x);
+    gz_wind_speed_msg.mutable_velocity()->set_y(
+        ros_wind_speed_msg_ptr->velocity.y);
+    gz_wind_speed_msg.mutable_velocity()->set_z(
+        ros_wind_speed_msg_ptr->velocity.z);
+
+    // Publish to Gazebo
+    gz_publisher_ptr->Publish(gz_wind_speed_msg);
+  }
+
+  void GazeboRosInterfacePlugin::GzBroadcastTransformMsgCallback(
+      GzTransformStampedWithFrameIdsMsgPtr &broadcast_transform_msg)
+  {
+    ros::Time stamp;
+    stamp.sec = broadcast_transform_msg->header().stamp().sec();
+    stamp.nsec = broadcast_transform_msg->header().stamp().nsec();
+
+    tf::Quaternion tf_q_W_L(broadcast_transform_msg->transform().rotation().x(),
+                            broadcast_transform_msg->transform().rotation().y(),
+                            broadcast_transform_msg->transform().rotation().z(),
+                            broadcast_transform_msg->transform().rotation().w());
+
+    tf::Vector3 tf_p(broadcast_transform_msg->transform().translation().x(),
+                     broadcast_transform_msg->transform().translation().y(),
+                     broadcast_transform_msg->transform().translation().z());
+
+    tf_ = tf::Transform(tf_q_W_L, tf_p);
+    transform_broadcaster_.sendTransform(tf::StampedTransform(
+        tf_, stamp, broadcast_transform_msg->parent_frame_id(),
+        broadcast_transform_msg->child_frame_id()));
+  }
+
+  GZ_REGISTER_WORLD_PLUGIN(GazeboRosInterfacePlugin);
+
+} // namespace gazebo
