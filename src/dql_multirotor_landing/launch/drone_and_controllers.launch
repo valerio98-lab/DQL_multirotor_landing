@@ -31,7 +31,7 @@
 	</node>
 	<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
 	<node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" />
-	<node name="controller_v_z" pkg="pid" type="controller" ns="pid_v_z" output="screen">
+	<node name="controller_v_z" pkg="dql_multirotor_landing" type="controller.py" ns="pid_v_z" output="screen">
 		<param name="node_name" value="pid_v_z" />
 		<param name="Kp" value="5.0" />
 		<param name="Ki" value="10.0" />
@@ -45,7 +45,7 @@
 		<param name="topic_from_plant" value="/$(arg drone_name)/state/v_z" />
 		<param name="setpoint_topic" value="/$(arg drone_name)/setpoint/v_z" />
 	</node>
-	<node name="controller_yaw" pkg="pid" type="controller" ns="pid_yaw" output="screen">
+	<node name="controller_yaw" pkg="dql_multirotor_landing" type="controller.py" ns="pid_yaw" output="screen">
 		<param name="node_name" value="pid_yaw" />
 		<param name="Kp" value="8" />
 		<param name="Ki" value="1.0" />
