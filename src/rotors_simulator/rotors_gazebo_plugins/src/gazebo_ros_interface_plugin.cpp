@@ -214,11 +214,6 @@ namespace gazebo
           gazeboNamespace, gazeboTopicName, rosTopicName, gz_node_handle_);
       break;
 
-    case gz_std_msgs::ConnectGazeboToRosTopic::NAV_SAT_FIX:
-      ConnectHelper<gz_sensor_msgs::NavSatFix, sensor_msgs::NavSatFix>(
-          &GazeboRosInterfacePlugin::GzNavSatFixCallback, this, gazeboNamespace,
-          gazeboTopicName, rosTopicName, gz_node_handle_);
-      break;
     case gz_std_msgs::ConnectGazeboToRosTopic::POSE:
       ConnectHelper<gazebo::msgs::Pose, geometry_msgs::Pose>(
           &GazeboRosInterfacePlugin::GzPoseMsgCallback, this, gazeboNamespace,
@@ -428,110 +423,6 @@ namespace gazebo
 
     // Publish to ROS.
     ros_publisher.publish(ros_joint_state_msg_);
-  }
-
-  void GazeboRosInterfacePlugin::GzNavSatFixCallback(
-      GzNavSatFixPtr &gz_nav_sat_fix_msg, ros::Publisher ros_publisher)
-  {
-    // We need to convert from a Gazebo message to a ROS message, and then forward
-    // the NavSatFix message to ROS.
-
-    ConvertHeaderGzToRos(gz_nav_sat_fix_msg->header(),
-                         &ros_nav_sat_fix_msg_.header);
-
-    switch (gz_nav_sat_fix_msg->service())
-    {
-    case gz_sensor_msgs::NavSatFix::SERVICE_GPS:
-      ros_nav_sat_fix_msg_.status.service =
-          sensor_msgs::NavSatStatus::SERVICE_GPS;
-      break;
-    case gz_sensor_msgs::NavSatFix::SERVICE_GLONASS:
-      ros_nav_sat_fix_msg_.status.service =
-          sensor_msgs::NavSatStatus::SERVICE_GLONASS;
-      break;
-    case gz_sensor_msgs::NavSatFix::SERVICE_COMPASS:
-      ros_nav_sat_fix_msg_.status.service =
-          sensor_msgs::NavSatStatus::SERVICE_COMPASS;
-      break;
-    case gz_sensor_msgs::NavSatFix::SERVICE_GALILEO:
-      ros_nav_sat_fix_msg_.status.service =
-          sensor_msgs::NavSatStatus::SERVICE_GALILEO;
-      break;
-    default:
-      gzthrow(
-          "Specific value of enum type gz_sensor_msgs::NavSatFix::Service is "
-          "not yet supported.");
-    }
-
-    switch (gz_nav_sat_fix_msg->status())
-    {
-    case gz_sensor_msgs::NavSatFix::STATUS_NO_FIX:
-      ros_nav_sat_fix_msg_.status.status =
-          sensor_msgs::NavSatStatus::STATUS_NO_FIX;
-      break;
-    case gz_sensor_msgs::NavSatFix::STATUS_FIX:
-      ros_nav_sat_fix_msg_.status.status =
-          sensor_msgs::NavSatStatus::STATUS_FIX;
-      break;
-    case gz_sensor_msgs::NavSatFix::STATUS_SBAS_FIX:
-      ros_nav_sat_fix_msg_.status.status =
-          sensor_msgs::NavSatStatus::STATUS_SBAS_FIX;
-      break;
-    case gz_sensor_msgs::NavSatFix::STATUS_GBAS_FIX:
-      ros_nav_sat_fix_msg_.status.status =
-          sensor_msgs::NavSatStatus::STATUS_GBAS_FIX;
-      break;
-    default:
-      gzthrow(
-          "Specific value of enum type gz_sensor_msgs::NavSatFix::Status is "
-          "not yet supported.");
-    }
-
-    ros_nav_sat_fix_msg_.latitude = gz_nav_sat_fix_msg->latitude();
-    ros_nav_sat_fix_msg_.longitude = gz_nav_sat_fix_msg->longitude();
-    ros_nav_sat_fix_msg_.altitude = gz_nav_sat_fix_msg->altitude();
-
-    switch (gz_nav_sat_fix_msg->position_covariance_type())
-    {
-    case gz_sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN:
-      ros_nav_sat_fix_msg_.position_covariance_type =
-          sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
-      break;
-    case gz_sensor_msgs::NavSatFix::COVARIANCE_TYPE_APPROXIMATED:
-      ros_nav_sat_fix_msg_.position_covariance_type =
-          sensor_msgs::NavSatFix::COVARIANCE_TYPE_APPROXIMATED;
-      break;
-    case gz_sensor_msgs::NavSatFix::COVARIANCE_TYPE_DIAGONAL_KNOWN:
-      ros_nav_sat_fix_msg_.position_covariance_type =
-          sensor_msgs::NavSatFix::COVARIANCE_TYPE_DIAGONAL_KNOWN;
-      break;
-    case gz_sensor_msgs::NavSatFix::COVARIANCE_TYPE_KNOWN:
-      ros_nav_sat_fix_msg_.position_covariance_type =
-          sensor_msgs::NavSatFix::COVARIANCE_TYPE_KNOWN;
-      break;
-    default:
-      gzthrow(
-          "Specific value of enum type "
-          "gz_sensor_msgs::NavSatFix::PositionCovarianceType is not yet "
-          "supported.");
-    }
-
-    // Position covariance should have 9 elements, and both the Gazebo and ROS
-    // arrays should be the same size!
-    GZ_ASSERT(gz_nav_sat_fix_msg->position_covariance_size() == 9,
-              "The Gazebo NavSatFix message does not have 9 position covariance "
-              "elements.");
-    GZ_ASSERT(ros_nav_sat_fix_msg_.position_covariance.size() == 9,
-              "The ROS NavSatFix message does not have 9 position covariance "
-              "elements.");
-    for (int i = 0; i < gz_nav_sat_fix_msg->position_covariance_size(); i++)
-    {
-      ros_nav_sat_fix_msg_.position_covariance[i] =
-          gz_nav_sat_fix_msg->position_covariance(i);
-    }
-
-    // Publish to ROS.
-    ros_publisher.publish(ros_nav_sat_fix_msg_);
   }
 
   void GazeboRosInterfacePlugin::GzOdometryMsgCallback(

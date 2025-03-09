@@ -41,7 +41,6 @@
 #include "CommandMotorSpeed.pb.h"
 #include "Float32.pb.h"
 #include "JointState.pb.h"
-#include "NavSatFix.pb.h"
 #include "Odometry.pb.h"
 #include "PoseWithCovarianceStamped.pb.h"
 #include "RollPitchYawrateThrust.pb.h"
@@ -63,7 +62,6 @@
 #include <mav_msgs/RollPitchYawrateThrust.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/JointState.h>
-#include <sensor_msgs/NavSatFix.h>
 #include <std_msgs/Float32.h>
 
 #include "rotors_gazebo_plugins/common.h"
@@ -101,8 +99,6 @@ namespace gazebo
 
     typedef const boost::shared_ptr<const gz_sensor_msgs::JointState>
         GzJointStateMsgPtr;
-
-    typedef const boost::shared_ptr<const gz_sensor_msgs::NavSatFix> GzNavSatFixPtr;
 
     /// \brief    ROS interface plugin for Gazebo.
     /// \details  This routes messages to/from Gazebo and ROS. This is used
@@ -215,11 +211,6 @@ namespace gazebo
         void GzJointStateMsgCallback(GzJointStateMsgPtr &gz_joint_state_msg,
                                      ros::Publisher ros_publisher);
         sensor_msgs::JointState ros_joint_state_msg_;
-
-        // NAT SAT FIX (GPS)
-        void GzNavSatFixCallback(GzNavSatFixPtr &gz_nav_sat_fix_msg,
-                                 ros::Publisher ros_publisher);
-        sensor_msgs::NavSatFix ros_nav_sat_fix_msg_;
 
         // ODOMETRY
         void GzOdometryMsgCallback(GzOdometryMsgPtr &gz_odometry_msg,

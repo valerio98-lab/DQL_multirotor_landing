@@ -18,7 +18,6 @@ message ConnectGazeboToRosTopic
   	ACTUATORS = 0;
     FLOAT_32 = 1;
     JOINT_STATE = 4;
-    NAV_SAT_FIX = 6;
     ODOMETRY = 7;
     POSE = 8;
     POSE_WITH_COVARIANCE_STAMPED = 9;

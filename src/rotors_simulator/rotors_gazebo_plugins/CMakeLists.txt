@@ -23,15 +23,6 @@ project(rotors_gazebo_plugins)
 # ========================== SET DEFAULTS FOR PASSED-IN VARIABLES =============================== #
 # =============================================================================================== #
 
-if(NOT DEFINED BUILD_OCTOMAP_PLUGIN)
-  message(STATUS "BUILD_OCTOMAP_PLUGIN variable not provided, setting to FALSE.")
-  set(BUILD_OCTOMAP_PLUGIN FALSE)
-endif()
-
-if(NOT DEFINED BUILD_OPTICAL_FLOW_PLUGIN)
-  message(STATUS "BUILD_OPTICAL_FLOW_PLUGIN variable not provided, setting to FALSE.")
-  set(BUILD_OPTICAL_FLOW_PLUGIN FALSE)
-endif()
 
 if(NOT DEFINED NO_ROS)
   message(STATUS "NO_ROS variable not provided, setting to FALSE.")
