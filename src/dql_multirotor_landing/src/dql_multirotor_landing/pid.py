@@ -1,87 +1,63 @@
 #!/usr/bin/env python
 import rospy
+import numpy as np
+from collections import deque
 from std_msgs.msg import Float64, Float64MultiArray
-
+from dql_multirotor_landing.filters import ButterworthFilter
 
 class PidObject:
-    def __init__(self):
-        # Inizializzazione dei vettori per errori e derivati (3 elementi ciascuno)
-        self.error = [0.0, 0.0, 0.0]
-        self.filtered_error = [0.0, 0.0, 0.0]
-
-        self.error_deriv = [0.0, 0.0, 0.0]
-        self.filtered_error_deriv = [0.0, 0.0, 0.0]
+    """
+    PID Controller class that calculates control efforts based on the error between a setpoint
+    and the current plant state. This controller uses Butterworth filters to smooth the error and
+    its derivative before computing the PID terms.
+    """
+    def __init__(self, rate_hz=1000.0):
+        self.rate_hz = rate_hz
+        self.error = deque([0.0, 0.0], maxlen=3)
+        self.error_deriv = deque([0.0, 0.0, 0.0], maxlen=3)
+        self.filter_error = ButterworthFilter()
+        self.filter_deriv = ButterworthFilter()
         self.error_integral = 0.0
 
-        # Variabili di stato
         self.plant_state = 0.0
         self.control_effort = 0.0
         self.setpoint = 0.0
-        self.pid_enabled = True
         self.new_state_or_setpt = False
 
-        # Timing
         self.prev_time = None
-        self.last_setpoint_msg_time: rospy.Time = rospy.Time.now()
+        self.last_setpoint_msg_time = rospy.Time.now()
 
-        # Termini PID
         self.proportional = 0.0
         self.integral = 0.0
         self.derivative = 0.0
 
-        # Filtro derivativo
-        self.c = 1.0
-        self.tan_filt = 1.0
-        self.setpoint_timeout: float = -1.0  # type: ignore
+        self.load_params()
+        self.init_ros_comm()
+        self.prev_time = rospy.Time.now()
+        self.run()
 
-        # Attendere che il tempo ROS sia inizializzato (non zero)
-        while rospy.Time.now().to_sec() == 0 and not rospy.is_shutdown():
-            rospy.loginfo("controller spinning, waiting for time to become non-zero")
-            rospy.sleep(1)
 
-        # Lettura dei parametri dal parameter server (nello spazio dei nomi privato "~")
+    def load_params(self):
         ns = "~"
-        self.Kp: float = rospy.get_param(ns + "Kp", 1.0)  # type: ignore
-        self.Ki: float = rospy.get_param(ns + "Ki", 0.0)  # type: ignore
-        self.Kd: float = rospy.get_param(ns + "Kd", 0.0)  # type: ignore
-        if not (
-            (self.Kp <= 0 and self.Ki <= 0 and self.Kd <= 0)
-            or (self.Kp >= 0 and self.Ki >= 0 and self.Kd >= 0)
-        ):
-            rospy.logwarn(
-                "All three gains (Kp, Ki, Kd) should have the same sign for stability."
-            )
+        self.Kp = rospy.get_param(ns + "Kp", 1.0)
+        self.Ki = rospy.get_param(ns + "Ki", 0.0)
+        self.Kd = rospy.get_param(ns + "Kd", 0.0)
 
-        self.upper_limit: float = rospy.get_param(ns + "upper_limit", 1000.0)  # type: ignore
-        self.lower_limit: float = rospy.get_param(ns + "lower_limit", -1000.0)  # type: ignore
-        assert self.lower_limit < self.upper_limit, (
-            "The lower saturation limit cannot be greater than the upper saturation limit."
-        )
+        self.upper_limit = rospy.get_param(ns + "upper_limit", 1000.0)
+        self.lower_limit = rospy.get_param(ns + "lower_limit", -1000.0)
 
-        self.windup_limit: float = rospy.get_param(ns + "windup_limit", 1000.0)  # type: ignore
-        self.cutoff_frequency: float = rospy.get_param(ns + "cutoff_frequency", -1.0)  # type: ignore
-        self.topic_from_controller: str = rospy.get_param(
-            ns + "topic_from_controller", "control_effort"
-        )  # type: ignore
-        self.topic_from_plant: str = rospy.get_param(ns + "topic_from_plant", "state")  # type: ignore
-        self.setpoint_topic: str = rospy.get_param(ns + "setpoint_topic", "setpoint")  # type: ignore
+        self.windup_limit = rospy.get_param(ns + "windup_limit", 1000.0)
+        self.cutoff_frequency = rospy.get_param(ns + "cutoff_frequency", -1.0)
+        self.topic_from_controller = rospy.get_param(ns + "topic_from_controller", "control_effort")
+        self.topic_from_plant = rospy.get_param(ns + "topic_from_plant", "state")
+        self.setpoint_topic = rospy.get_param(ns + "setpoint_topic", "setpoint")
+        self.max_loop_frequency = rospy.get_param(ns + "max_loop_frequency", 1.0)
+        self.min_loop_frequency = rospy.get_param(ns + "min_loop_frequency", 1000.0)
 
-        self.max_loop_frequency: float = rospy.get_param(ns + "max_loop_frequency", 1.0)  # type: ignore
-        self.min_loop_frequency: float = rospy.get_param(
-            ns + "min_loop_frequency", 1000.0
-        )  # type: ignore
-
-        # Inizializzazione dei publisher e subscriber
-        self.control_effort_pub = rospy.Publisher(
-            self.topic_from_controller, Float64, queue_size=1
-        )
+    def init_ros_comm(self):
+        self.control_effort_pub = rospy.Publisher(self.topic_from_controller, Float64, queue_size=1)
         rospy.Subscriber(self.topic_from_plant, Float64, self.plant_state_callback)
         rospy.Subscriber(self.setpoint_topic, Float64, self.setpoint_callback)
-
-        # Impostare il tempo precedente
-        self.prev_time = rospy.Time.now()
-
-        self.run()
 
     def setpoint_callback(self, msg):
         self.setpoint = msg.data
@@ -92,95 +68,70 @@ class PidObject:
         self.plant_state = msg.data
         self.new_state_or_setpt = True
 
-    def do_calcs(self):
-        if self.new_state_or_setpt:
-            # Aggiornamento degli errori: lo slot 0 contiene l'errore corrente
-            self.error[2] = self.error[1]
-            self.error[1] = self.error[0]
-            self.error[0] = self.setpoint - self.plant_state
+    def output(self):
+        """
+        Process a new state or setpoint update by:
+          - Calculating error (setpoint - plant state)
+          - Computing delta_t and updating error integral (with anti-windup)
+          - Filtering error and its derivative
+          - Computing PID control effort and publishing it via ROS
+        """
 
-            # Calcolo del delta_t
-            current_time = rospy.Time.now()
-            if self.prev_time is not None:
-                delta_t = (current_time - self.prev_time).to_sec()
-                self.prev_time = current_time
-                if delta_t == 0:
-                    rospy.logerr(
-                        "delta_t is 0, skipping this loop. Possible overloaded CPU at time: {}".format(
-                            current_time.to_sec()
-                        )
-                    )
-                    return
-            else:
-                rospy.loginfo("prev_time is 0, doing nothing")
-                self.prev_time = current_time
-                return
+        if not self.new_state_or_setpt:
+            return
 
-            # Integrazione dell'errore
-            self.error_integral += self.error[0] * delta_t
-            if self.error_integral > abs(self.windup_limit):
-                self.error_integral = abs(self.windup_limit)
-            if self.error_integral < -abs(self.windup_limit):
-                self.error_integral = -abs(self.windup_limit)
+        current_error = self.setpoint - self.plant_state
+        self.error.appendleft(current_error)
 
-            denom = 1 + self.c * self.c + 1.414 * self.c
-            self.filtered_error[2] = self.filtered_error[1]
-            self.filtered_error[1] = self.filtered_error[0]
-            self.filtered_error[0] = (1.0 / denom) * (
-                self.error[2]
-                + 2 * self.error[1]
-                + self.error[0]
-                - ((self.c * self.c - 1.414 * self.c + 1) * self.filtered_error[2])
-                - ((-2 * self.c * self.c + 2) * self.filtered_error[1])
-            )
+        current_time = rospy.Time.now()
+        if self.prev_time is None:
+            self.prev_time = current_time
+            return
 
-            self.error_deriv[2] = self.error_deriv[1]
-            self.error_deriv[1] = self.error_deriv[0]
-            self.error_deriv[0] = (self.error[0] - self.error[1]) / delta_t
+        delta_t = (current_time - self.prev_time).to_sec()
+        if delta_t == 0:
+            rospy.logerr("delta_t=0; jumping this loop. Current Time: {:.2f}".format(current_time.to_sec()))
+            return
+        self.prev_time = current_time
 
-            self.filtered_error_deriv[2] = self.filtered_error_deriv[1]
-            self.filtered_error_deriv[1] = self.filtered_error_deriv[0]
-            self.filtered_error_deriv[0] = (1.0 / denom) * (
-                self.error_deriv[2]
-                + 2 * self.error_deriv[1]
-                + self.error_deriv[0]
-                - (
-                    (self.c * self.c - 1.414 * self.c + 1)
-                    * self.filtered_error_deriv[2]
-                )
-                - ((-2 * self.c * self.c + 2) * self.filtered_error_deriv[1])
-            )
+        self.error_integral += self.error[0] * delta_t
+        self.error_integral = np.clip(self.error_integral, -self.windup_limit, self.windup_limit)
 
-            # Calcolo del controllo PID
-            self.proportional = self.Kp * self.filtered_error[0]
-            self.integral = self.Ki * self.error_integral
-            self.derivative = self.Kd * self.filtered_error_deriv[0]
-            self.control_effort = self.proportional + self.integral + self.derivative
+        filtered_error = self.filter_error.update(self.error[0])
 
-            # Applicazione dei limiti di saturazione
-            if self.control_effort > self.upper_limit:
-                self.control_effort = self.upper_limit
-            elif self.control_effort < self.lower_limit:
-                self.control_effort = self.lower_limit
+        derivative_raw = (self.error[0] - self.error[1]) / delta_t
 
-            msg = Float64()
-            msg.data = self.control_effort
-            self.control_effort_pub.publish(msg)
+        filtered_deriv = self.filter_deriv.update(derivative_raw)
 
-            debug_msg = Float64MultiArray()
-            debug_msg.data = [
-                self.plant_state,
-                self.control_effort,
-                self.proportional,
-                self.integral,
-                self.derivative,
-            ]
+        self.proportional = self.Kp * filtered_error
+        self.integral = self.Ki * self.error_integral
+        self.derivative = self.Kd * filtered_deriv
 
-            self.new_state_or_setpt = False
+        self.control_effort = self.proportional + self.integral + self.derivative
+        self.control_effort = np.clip(self.control_effort, self.lower_limit, self.upper_limit)
+
+        self.publish_control_effort()
+        self.new_state_or_setpt = False
+
+    def publish_control_effort(self):
+        msg = Float64(data=self.control_effort)
+        self.control_effort_pub.publish(msg)
+
 
     def run(self):
-        rate = 1000
-        rospy.Rate(rate)  # Frequenza di loop: 1000 Hz
+        """
+        The main loop of the PID controller.
+        Continuously calls the output() method at a fixed rate defined by self.rate_hz.
+        """
+        rate = rospy.Rate(self.rate_hz)
         while not rospy.is_shutdown():
-            self.do_calcs()
-            rospy.sleep(1 / rate)
+            self.output()
+            rate.sleep()
+
+
+if __name__ == "__main__":
+    rospy.init_node("pid_controller")
+    try:
+        PidObject()
+    except rospy.ROSInterruptException:
+        pass

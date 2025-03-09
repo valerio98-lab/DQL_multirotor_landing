@@ -9,7 +9,7 @@ from gazebo_msgs.srv import SetModelState
 from geometry_msgs.msg import PoseStamped, TwistStamped, Vector3, Vector3Stamped
 from mav_msgs.msg import RollPitchYawrateThrust
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Bool, Float64, Float64MultiArray, Header
+from std_msgs.msg import Bool, Float64, Header
 from tf.transformations import euler_from_quaternion
 
 from dql_multirotor_landing.filters import KalmanFilter3D

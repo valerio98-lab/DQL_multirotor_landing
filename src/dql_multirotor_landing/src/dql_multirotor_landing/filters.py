@@ -1,77 +1,5 @@
 from geometry_msgs.msg import Vector3Stamped
-
-class LowPassFilter1D:
-    def __init__(self, alpha):
-        """
-        Implements a 1D low-pass filter to smooth noisy data.
-        
-        Parameters:
-        - alpha (float): Smoothing factor (0 < alpha ≤ 1). Higher values give more weight to the new measurement.
-        """
-
-        self.alpha = alpha
-        self.filtered_value = None 
-
-    def update(self, measurement):
-        """
-        Applies the low-pass filter to a new measurement.
-
-        Parameters:
-        - measurement (float): The latest sensor measurement.
-
-        Returns:
-        - float: The filtered measurement.
-        """
-
-        if self.filtered_value is None:
-            self.filtered_value = measurement  
-        else:
-            self.filtered_value = self.alpha * measurement + (1 - self.alpha) * self.filtered_value
-
-        return self.filtered_value
-
-class LowPassFilter3D:
-    def __init__(self, alpha_x=0.5, alpha_y=0.5, alpha_z=0.5):
-        """
-        Implements a 3D low-pass filter for acceleration data.
-
-        Parameters:
-        - alpha_x, alpha_y, alpha_z (float): Smoothing factors for each axis.
-        """
-
-        self.lpf_x = LowPassFilter1D(alpha_x)
-        self.lpf_y = LowPassFilter1D(alpha_y)
-        self.lpf_z = LowPassFilter1D(alpha_z)
-
-    def filter(self, current_rel_v, timestep, last_vel, last_timestep):
-        """
-        Estimates the filtered acceleration using a low-pass filter.
-
-        Parameters:
-        - current_rel_v (Vector3): Current relative velocity.
-        - timestep (float): Current timestamp.
-        - last_vel (Vector3): Previous velocity.
-        - last_timestep (float): Previous timestamp.
-
-        Returns:
-        - Vector3Stamped: Filtered acceleration estimate.
-        """
-
-        dt = timestep - last_timestep
-        if dt <= 0:
-            dt = 0.01 
-
-        raw_accel_x = (current_rel_v.x - last_vel.x) / dt
-        raw_accel_y = (current_rel_v.y - last_vel.y) / dt
-        raw_accel_z = (current_rel_v.z - last_vel.z) / dt
-
-        accel = Vector3Stamped()
-        accel.vector.x = self.lpf_x.update(raw_accel_x)
-        accel.vector.y = self.lpf_y.update(raw_accel_y)
-        accel.vector.z = self.lpf_z.update(raw_accel_z)
-
-        return accel
-
+from collections import deque
 
 class KalmanFilter1D:
     def __init__(self, process_variance, measurement_variance):
@@ -140,13 +68,42 @@ class KalmanFilter3D:
         if dt <= 0:
             dt = 0.01  
 
-        raw_accel_x = (current_rel_v.x - last_vel.x) / dt
-        raw_accel_y = (current_rel_v.y - last_vel.y) / dt
-        raw_accel_z = (current_rel_v.z - last_vel.z) / dt
+        raw_acc_x = (current_rel_v.x - last_vel.x) / dt
+        raw_acc_y = (current_rel_v.y - last_vel.y) / dt
+        raw_acc_z = (current_rel_v.z - last_vel.z) / dt
 
-        accel = Vector3Stamped()
-        accel.vector.x = self.kf_x.update(raw_accel_x)
-        accel.vector.y = self.kf_y.update(raw_accel_y)
-        accel.vector.z = self.kf_z.update(raw_accel_z)
+        acc = Vector3Stamped()
+        acc.vector.x = self.kf_x.update(raw_acc_x)
+        acc.vector.y = self.kf_y.update(raw_acc_y)
+        acc.vector.z = self.kf_z.update(raw_acc_z)
 
-        return accel
+        return acc
+    
+
+class ButterworthFilter:
+    """
+    Second-order low-pass Butterworth filter using the bilinear transform.
+    Maintains internal state (raw and filtered deques) and computes the filtered output.
+    """
+    def __init__(self):
+        """
+        :param c: Parameter related to cutoff frequency (c = tan(omega_c/2))
+        :param init_value: Initial value for the filter queues
+        """
+        self.c = 1.0
+        self.denom = 1 + self.c ** 2 + 1.414 * self.c
+        self.raw_values = deque([0.0, 0.0, 0.0], maxlen=3)
+        self.filtered_values = deque([0.0, 0.0, 0.0], maxlen=3)
+
+    def update(self, new_value: float) -> float:
+        """
+        Update the filter with a new input value and return the new filtered value.
+        """
+        self.raw_values.appendleft(new_value)
+        value = (1.0 / self.denom) * (
+            self.raw_values[2] + 2 * self.raw_values[1] + self.raw_values[0]
+            - (self.c ** 2 - 1.414 * self.c + 1) * self.filtered_values[2]
+            - ((-2 * self.c ** 2 + 2) * self.filtered_values[1])
+        )
+        self.filtered_values.appendleft(value)
+        return value

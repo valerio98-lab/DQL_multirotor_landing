@@ -18,7 +18,7 @@ from tf.transformations import (
 )
 from tf2_geometry_msgs import do_transform_pose, do_transform_vector3
 
-from dql_multirotor_landing.filters import KalmanFilter3D, LowPassFilter3D
+from dql_multirotor_landing.filters import KalmanFilter3D
 from dql_multirotor_landing.msg import Observation
 
 
@@ -44,7 +44,7 @@ class ObservationUtils:
         world_frame,
         noise_pos_sd=0.0,
         noise_vel_sd=0.0,
-        filter=Union[KalmanFilter3D, LowPassFilter3D],
+        filter=KalmanFilter3D(),
     ):
         self.noise_pos_sd = noise_pos_sd
         self.noise_vel_sd = noise_vel_sd
