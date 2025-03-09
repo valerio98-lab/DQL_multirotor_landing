@@ -9,7 +9,8 @@
                 "/opt/ros/noetic/include/**",
                 "/usr/include/**",
                 "${workspaceFolder}/src/rotors_simulator/rotors_gazebo_plugins/include",
-                "${workspaceFolder}/build/rotors_simulator/rotors_gazebo_plugins"
+                "${workspaceFolder}/build/rotors_simulator/rotors_gazebo_plugins",
+                "${workspaceFolder}/src/mav_comm/mav_msgs/include"
             ],
             "name": "ROS",
             "intelliSenseMode": "gcc-x64",

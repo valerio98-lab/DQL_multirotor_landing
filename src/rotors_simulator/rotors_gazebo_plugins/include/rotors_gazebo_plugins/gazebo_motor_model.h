@@ -77,7 +77,6 @@ namespace gazebo
         : ModelPlugin(),
           MotorModel(),
           command_sub_topic_(mav_msgs::default_topics::COMMAND_ACTUATORS),
-          wind_speed_sub_topic_(mav_msgs::default_topics::WIND_SPEED),
           motor_speed_pub_topic_(mav_msgs::default_topics::MOTOR_MEASUREMENT),
           motor_position_pub_topic_(mav_msgs::default_topics::MOTOR_POSITION_MEASUREMENT),
           motor_force_pub_topic_(mav_msgs::default_topics::MOTOR_FORCE_MEASUREMENT),
@@ -126,7 +125,6 @@ namespace gazebo
     double NormalizeAngle(double input);
 
     std::string command_sub_topic_;
-    std::string wind_speed_sub_topic_;
     std::string joint_name_;
     std::string link_name_;
     std::string motor_speed_pub_topic_;

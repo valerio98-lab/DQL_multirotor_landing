@@ -181,8 +181,7 @@ namespace gazebo
 
     getSdfParam<std::string>(
         _sdf, "commandSubTopic", command_sub_topic_, command_sub_topic_);
-    getSdfParam<std::string>(
-        _sdf, "windSpeedSubTopic", wind_speed_sub_topic_, wind_speed_sub_topic_);
+
     getSdfParam<std::string>(
         _sdf, "motorSpeedPubTopic", motor_speed_pub_topic_,
         motor_speed_pub_topic_);

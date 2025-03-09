@@ -24,16 +24,12 @@
 namespace mav_msgs {
 namespace default_topics {
 
-static constexpr char IMU[] = "imu";
 static constexpr char MOTOR_MEASUREMENT[] = "motor_speed";
 static constexpr char MOTOR_POSITION_MEASUREMENT[] = "motor_position";
 static constexpr char MOTOR_FORCE_MEASUREMENT[] = "motor_force";
-static constexpr char MAGNETIC_FIELD[] = "magnetic_field";
-static constexpr char GPS[] = "gps";
 static constexpr char RC[] = "rc";
 static constexpr char STATUS[] = "status";
 static constexpr char FILTERED_SENSOR_DATA[] = "filtered_sensor_data";
-static constexpr char AIR_SPEED[] = "air_speed";
 static constexpr char GROUND_SPEED[] = "ground_speed";
 
 static constexpr char COMMAND_ACTUATORS[] = "command/motor_speed";
@@ -43,7 +39,6 @@ static constexpr char COMMAND_ROLL_PITCH_YAWRATE_THRUST[] =
 static constexpr char COMMAND_ATTITUDE_THRUST[] = "command/attitude_thrust";
 static constexpr char COMMAND_TRAJECTORY[] = "command/trajectory";
 static constexpr char COMMAND_POSE[] = "command/pose";
-static constexpr char COMMAND_GPS_WAYPOINT[] = "command/gps_waypoint";
 
 static constexpr char POSE[] = "pose";
 static constexpr char POSE_WITH_COVARIANCE[] = "pose_with_covariance";
@@ -53,7 +48,6 @@ static constexpr char POSITION[] = "position";
 
 // Simulation-specific topic names.
 static constexpr char WRENCH[] = "wrench";
-static constexpr char WIND_SPEED[] = "wind_speed";
 static constexpr char EXTERNAL_FORCE[] = "external_force";
 
 static constexpr char GROUND_TRUTH_POSE[] = "ground_truth/pose";

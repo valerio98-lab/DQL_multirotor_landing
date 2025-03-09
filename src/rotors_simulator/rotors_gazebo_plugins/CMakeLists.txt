@@ -72,17 +72,9 @@ set(targets_to_install "")
 
 message(STATUS "ADDITIONAL_INCLUDE_DIRS = ${ADDITIONAL_INCLUDE_DIRS}")
 
-if(BUILD_OCTOMAP_PLUGIN)
-  message(STATUS "BUILD_OCTOMAP_PLUGIN = TRUE, building gazebo_octomap_plugin.")
-else ()
-  message(STATUS "BUILD_OCTOMAP_PLUGIN = FALSE, NOT building gazebo_octomap_plugin.")
-endif ()
 
-if(BUILD_OPTICAL_FLOW_PLUGIN)
-  message(STATUS "BUILD_OPTICAL_FLOW_PLUGIN = TRUE, building gazebo_optical_flow_plugin.")
-else ()
-  message(STATUS "BUILD_OPTICAL_FLOW_PLUGIN = FALSE, NOT building gazebo_optical_flow_plugin.")
-endif ()
+
+
 
 if(NO_ROS)
   message(STATUS "NO_ROS = TRUE, building rotors_gazebo_plugins WITHOUT any ROS dependancies.")
@@ -108,12 +100,7 @@ if (NOT NO_ROS)
     cv_bridge
     geometry_msgs
     mav_msgs
-    octomap_msgs
-    octomap_ros
-    rosbag
     roscpp
-    rotors_comm
-    rotors_control
     std_srvs
     tf
   )
@@ -268,80 +255,7 @@ if (NOT NO_ROS)
   list(APPEND targets_to_install rotors_gazebo_controller_interface)
 endif()
 
-#=================================== GEOTAGGED IMAGES PLUGIN ====================================//
 
-message(STATUS "GAZEBO ${gazebo_VERSION_MAJOR}.${gazebo_VERSION_MINOR}.${gazebo_VERSION_PATCH}")
-message(STATUS "${GAZEBO_VERSION_MAJOR}")
-
-
-
-
-
-#================================= MAVLINK INTERFACE PLUGIN =====================================//
-
-if(BUILD_MAVLINK_INTERFACE_PLUGIN)
-  message(STATUS "BUILD_MAVLINK_INTERFACE_PLUGIN = TRUE, adding mavros dependency and building mavlink_interface_plugin.")
-else ()
-  message(STATUS "BUILD_MAVLINK_INTERFACE_PLUGIN = FALSE, NOT adding mavros dependency and NOT building mavlink_interface_plugin.")
-endif ()
-
-if (BUILD_MAVLINK_INTERFACE_PLUGIN)
-  set(MAVLINK_HEADER_DIR ${MAVLINK_INCLUDE_DIRS})
-  if(NO_ROS)
-    # We need the MAVLink headers.
-    set(MAVLINK_HEADERS_FOUND FALSE)
-
-    # First, check to see if MAVLink headers were passed in as variable
-    if(NOT ${MAVLINK_HEADER_DIR} STREQUAL "")
-      message(STATUS "MAVLINK_HEADER_DIR provided as '${MAVLINK_HEADER_DIR}'.")
-      include_directories(${MAVLINK_HEADER_DIR})
-      set(MAVLINK_HEADERS_FOUND TRUE)
-    else()
-      message(WARN "MAVLINK_HEADER_DIR not provided, falling back to looking at default paths...")
-      # fist check if there's a mavlink dir in the current workspace
-      if(EXISTS ${mavlink_INCLUDE_DIRS}/mavlink/v2.0)
-        message(STATUS "Found MAVLink headers in workspace at ' ${mavlink_INCLUDE_DIRS}/mavlink/v2.0/'.")
-        include_directories("${mavlink_INCLUDE_DIRS}/mavlink/v2.0/")
-        set(MAVLINK_HEADERS_FOUND TRUE)
-      # If ROS is installed, we should be able to find them at the path below
-      elseif(EXISTS /opt/ros/$ENV{ROS_DISTRO}/include/mavlink/v2.0/)
-        message(STATUS "Found MAVLink headers at '/opt/ros/$ENV{ROS_DISTRO}/include/mavlink/v2.0/'.")
-        include_directories("/opt/ros/$ENV{ROS_DISTRO}/include/mavlink/v2.0/")
-        set(MAVLINK_HEADERS_FOUND TRUE)
-      endif()
-    endif()
-    add_library(rotors_gazebo_mavlink_interface SHARED src/gazebo_mavlink_interface.cpp)
-    target_link_libraries(rotors_gazebo_mavlink_interface ${target_linking_LIBRARIES}  ${mav_msgs})
-    list(APPEND targets_to_install rotors_gazebo_mavlink_interface)
-  else()
-    set(MAVROS_VALID FALSE)
-    # needed to ensure mavros is actually built by the time we call find_package
-    add_custom_target("mavros_dummy_target" DEPENDS mavros)
-
-    find_package(mavros QUIET)
-
-    # Check mavros version
-    if(mavros_VERSION_MAJOR GREATER 0 OR mavros_VERSION_MINOR GREATER 17)
-      set(MAVROS_VALID TRUE)
-    else()
-      message(WARN "MAVROS version too old (${mavros_VERSION}) - need version newer than 0.17, not building MavlinkInterfacePlugin")
-    endif()
-
-    if(NOT MAVLINK_HEADERS_FOUND)
-      message(ERROR "MAVLink headers were not found. They are required for building MavlinkInterfacePlugin. Not building MavlinkInterfacePlugin.")
-    endif()
-
-    if(MAVLINK_HEADERS_FOUND AND MAVROS_VALID)
-    message(WARN "Mavlink headers found and mavros version check successful, building MavlinkInterfacePlugin")
-    # Note that this library includes TWO .cpp files.
-    add_library(rotors_gazebo_mavlink_interface SHARED src/gazebo_mavlink_interface.cpp src/geo_mag_declination.cpp)
-    target_link_libraries(rotors_gazebo_mavlink_interface ${target_linking_LIBRARIES}  ${mav_msgs})
-    add_dependencies(rotors_gazebo_mavlink_interface ${catkin_EXPORTED_TARGETS} ${mavros_EXPORTED_TARGETS} ${mavros_msgs_EXPORTED_TARGETS})
-    list(APPEND targets_to_install rotors_gazebo_mavlink_interface)
-    endif()
-  endif()
-
-endif()
 
 #==================================== MOTOR MODEL PLUGIN ========================================//
 if (NOT NO_ROS)
@@ -359,20 +273,6 @@ if (NOT NO_ROS)
   list(APPEND targets_to_install rotors_gazebo_multirotor_base_plugin)
 endif()
 
-#====================================== OCTOMAP PLUGIN ==========================================//
-
-# Conditionally built since it requires Octomap as a dependency
-# ASL uses this, PX4 does not
-if(BUILD_OCTOMAP_PLUGIN)
-  find_package(octomap REQUIRED)
-  add_library(rotors_gazebo_octomap_plugin SHARED src/gazebo_octomap_plugin.cpp)
-  target_link_libraries(rotors_gazebo_octomap_plugin ${target_linking_LIBRARIES} )
-  if (NOT NO_ROS)
-    add_dependencies(rotors_gazebo_octomap_plugin ${catkin_EXPORTED_TARGETS})
-  endif()
-  list(APPEND targets_to_install rotors_gazebo_octomap_plugin)
-endif()
-
 #======================================= ODOMETRY PLUGIN ========================================//
 if (NOT NO_ROS)
   add_library(rotors_gazebo_odometry_plugin SHARED src/gazebo_odometry_plugin.cpp)
@@ -381,34 +281,6 @@ if (NOT NO_ROS)
   list(APPEND targets_to_install rotors_gazebo_odometry_plugin)
 endif()
 
-#===================================== OPTICAL FLOW PLUGIN ======================================//
-# Since the optical flow plugin depends on external code (PX4/OpticalFlow), this is
-# only conditionally built
-if(BUILD_OPTICAL_FLOW_PLUGIN)
-
-  # Check to make sure the correct Gazebo version is available.
-  if(${gazebo_VERSION_MAJOR} LESS 5)
-    message(FATAL_ERROR "Gazebo version needs to be >= v5.x. You specified BUILD_OPTICAL_FLOW_PLUGIN=TRUE, but Gazebo version was less than v5.x.")
-  endif()
-
-  find_package(Boost 1.40.0 REQUIRED timer)
-
-  # OpticalFlow needs to be built and installed by the calling script, as it is very
-  # unlikely that this package already exists on the users computer.
-  # In PX4 this is done with a call to ExternalProject_Add().
-  find_package(OpticalFlow REQUIRED)
-
-  add_library(rotors_gazebo_optical_flow_plugin SHARED src/external/gazebo_optical_flow_plugin.cpp)
-  target_include_directories(rotors_gazebo_optical_flow_plugin PUBLIC ${OpticalFlow_INCLUDE_DIRS})
-  target_link_libraries(rotors_gazebo_optical_flow_plugin
-    ${target_linking_LIBRARIES}
-    ${Boost_LIBRARIES}
-    ${OpticalFlow_LIBRARIES})
-  if (NOT NO_ROS)
-    add_dependencies(rotors_gazebo_optical_flow_plugin ${catkin_EXPORTED_TARGETS})
-  endif()
-  list(APPEND targets_to_install rotors_gazebo_optical_flow_plugin)
-endif()
 
 
 

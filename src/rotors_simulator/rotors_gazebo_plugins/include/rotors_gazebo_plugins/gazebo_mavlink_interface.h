@@ -59,8 +59,6 @@
 #include <mavlink/v2.0/common/mavlink.h>
 #include "msgbuffer.h"
 
-#include <rotors_gazebo_plugins/geo_mag_declination.h>
-
 static const uint32_t kDefaultMavlinkUdpPort = 14560;
 static const uint32_t kDefaultQGCUdpPort = 14550;
 
