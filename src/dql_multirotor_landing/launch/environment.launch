@@ -35,7 +35,7 @@
 	<rosparam command="load" file="$(find dql_multirotor_landing)/config/moving_platform_joints.yaml" ns="moving_platform" />
 	<!-- Includi il file di launch per il drone (ad esempio, per la simulazione del drone) -->
 	<group ns="$(arg drone_name)">
-		<include file="$(find dql_multirotor_landing)/launch/drone_and_controllers.launch">
+		<include file="$(find dql_multirotor_landing)/launch/drone.launch">
 			<arg name="mav_name" value="$(arg mav_name)" />
 			<arg name="drone_name" value="$(arg drone_name)" />
 			<arg name="enable_logging" value="$(arg enable_logging)" />

@@ -2,7 +2,7 @@
 import rospy
 import numpy as np
 from collections import deque
-from std_msgs.msg import Float64, Float64MultiArray
+from std_msgs.msg import Float64
 from dql_multirotor_landing.filters import ButterworthFilter
 
 class PidObject:

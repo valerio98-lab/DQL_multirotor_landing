@@ -2,7 +2,7 @@
 
 source devel/setup.bash
 
-screen -dmS env_launch bash -c "roslaunch dql_multirotor_landing landing_simulation.launch; exec bash" 
+screen -dmS env_launch bash -c "roslaunch dql_multirotor_landing environment.launch; exec bash" 
 
 echo "Waiting for the simulation to start."
 sleep 5

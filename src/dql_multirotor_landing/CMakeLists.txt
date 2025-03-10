@@ -164,7 +164,8 @@ catkin_install_python(PROGRAMS
   scripts/manager_node.py
   scripts/training.py
   scripts/simulation.py
-  scripts/controller.py
+  scripts/pid_node.py
+  scripts/attitude_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
