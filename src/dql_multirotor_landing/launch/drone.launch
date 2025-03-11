@@ -25,7 +25,6 @@
 		<arg name="z" value="$(arg Z)" />
 	</include>
 	<node name="roll_pitch_yawrate_thrust_controller_node" pkg="dql_multirotor_landing" type="attitude_node.py" output="screen">
-		<rosparam command="load" file="$(find rotors_gazebo)/resource/roll_pitch_yawrate_thrust_controller_$(arg mav_name).yaml" />
 		<rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
 		<remap from="odometry" to="odometry_sensor1/odometry" />
 	</node>

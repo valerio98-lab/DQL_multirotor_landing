@@ -37,7 +37,6 @@
   <depend>rosbag</depend>
   <depend>roscpp</depend>
   <depend>rotors_comm</depend>
-  <depend>rotors_control</depend>
   <depend>std_srvs</depend>
   <depend>tf</depend>
   <depend>yaml-cpp</depend>
