@@ -44,7 +44,7 @@ class RollPitchYawrateThrustControllerNode:
 
     def odometry_callback(self, msg):
 
-        rospy.loginfo_once("RollPitchYawrateThrustController ha ricevuto il primo messaggio di odometria.")
+        rospy.loginfo_once("AttitudeController received first odometry message.")
         
         odom = self._odometry_from_msg(msg)
         self.controller.odometry = odom
