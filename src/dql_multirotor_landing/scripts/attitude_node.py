@@ -26,13 +26,13 @@ class RollPitchYawrateThrustControllerNode:
         self.controller = AttitudeController()
 
         self.cmd_sub = rospy.Subscriber(rospy.get_param('~command_topic', 'command/roll_pitch_yawrate_thrust'),
-                                        RollPitchYawrateThrust, self.roll_pitch_yawrate_thrust_callback, queue_size=1)
+                                        RollPitchYawrateThrust, self.state_callback, queue_size=1)
         self.odom_sub = rospy.Subscriber(rospy.get_param('~odometry_topic', 'odometry_sensor1/odometry'),
                                          Odometry, self.odometry_callback, queue_size=1)
         self.motor_pub = rospy.Publisher(rospy.get_param('~motor_topic', 'command/motor_speed'),
                                          Actuators, queue_size=1)
 
-    def roll_pitch_yawrate_thrust_callback(self, msg):
+    def state_callback(self, msg):
 
         cmd = StateMsg(
             roll=msg.roll,

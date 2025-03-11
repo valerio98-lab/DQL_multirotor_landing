@@ -1,7 +1,6 @@
 import numpy as np
 import math
 import tf.transformations as tft
-from dql_multirotor_landing.observation_utils import ObservationUtils
 
 class Rotor:
     def __init__(self, angle, arm_length, rotor_force_constant, rotor_moment_constant, direction):
@@ -64,13 +63,6 @@ class AttitudeController:
 
         self.state = StateMsg()
 
-        I = np.block([[self.drone.inertia, np.zeros((3, 1))],
-                      [np.zeros((1, 3)), 1.0]])
-
-        inv_term = np.linalg.inv(self.allocation_matrix)
-        self.angular_acc_to_rotor_velocities = inv_term @ I
-
-
     def calculate_allocation_matrix(self):
         A = np.zeros((4, 4))
         for i, rotor in enumerate(self.drone.rotor_configuration.rotors):
@@ -82,19 +74,16 @@ class AttitudeController:
 
 
     def compute_rotor_velocities(self):
-        """
-        Calcola le velocità dei rotori.
-        Restituisce un vettore NumPy di dimensione pari al numero di rotori.
-        """
 
         angular_acceleration = self._compute_desired_ang_acc()
 
         # Costruisci il vettore di comando a 4 elementi: [angular_acceleration; thrust_z]
-        angular_acceleration_thrust = np.zeros(4)
-        angular_acceleration_thrust[:3] = angular_acceleration
-        angular_acceleration_thrust[3] = self.state.thrust[2]
+        moment_thrust = np.zeros(4)
+        moment_thrust[:3] = angular_acceleration
+        moment_thrust[3] = self.state.thrust[2]
 
-        rotor_velocities = self.angular_acc_to_rotor_velocities @ angular_acceleration_thrust
+        inv_term = np.linalg.inv(self.allocation_matrix)
+        rotor_velocities = inv_term @ moment_thrust
         rotor_velocities = np.maximum(rotor_velocities, 0)
         rotor_velocities = np.sqrt(rotor_velocities)
         return rotor_velocities
@@ -135,14 +124,10 @@ class AttitudeController:
         # Legge la legge di controllo:
         # - gain * errore angolare - gain * errore di velocità angolare + termine non lineare (cross product)
 
-        inv_inertia = np.linalg.inv(self.drone.inertia)
-        normalized_attitude_gain = inv_inertia @ self.attitude_gain
-        normalized_angular_rate_gain = inv_inertia @ self.angular_rate_gain
-
-        angular_acceleration = - np.multiply(angle_error, normalized_attitude_gain) \
-                                - np.multiply(angular_rate_error, normalized_angular_rate_gain) \
+        moment = - np.multiply(angle_error, self.attitude_gain) \
+                                - np.multiply(angular_rate_error, self.angular_rate_gain) \
                                 + np.cross(self.odometry.angular_velocity, self.odometry.angular_velocity)
-        return angular_acceleration
+        return moment
 
 
     def _vec_from_skew_matrix(self, skew_mat):
