@@ -19,22 +19,22 @@ class RotorConfiguration:
                   arm_length=0.17,
                   rotor_force_constant=8.54858e-06,
                   rotor_moment_constant=0.016,
-                  direction=1),
+                  direction=-1),
             Rotor(angle=math.pi/2,
                   arm_length=0.17,
                   rotor_force_constant=8.54858e-06,
                   rotor_moment_constant=0.016,
-                  direction=-1),
+                  direction=1),
             Rotor(angle=math.pi,
                   arm_length=0.17,
                   rotor_force_constant=8.54858e-06,
                   rotor_moment_constant=0.016,
-                  direction=1),
+                  direction=-1),
             Rotor(angle=-math.pi/2,
                   arm_length=0.17,
                   rotor_force_constant=8.54858e-06,
                   rotor_moment_constant=0.016,
-                  direction=-1)
+                  direction=1)
         ]
 
 class Drone:
@@ -51,39 +51,18 @@ class EigenRollPitchYawrateThrust:
         self.roll = roll
         self.pitch = pitch
         self.yaw_rate = yaw_rate
-        # thrust è un vettore NumPy di 3 elementi
         if thrust is None:
             self.thrust = np.zeros(3)
         else:
             self.thrust = thrust
 
-# Costanti di default per i guadagni (simili a quelli in C++)
-kDefaultAttitudeGain = np.array([3.0, 3.0, 0.035])
-kDefaultAngularRateGain = np.array([0.52, 0.52, 0.025])
-
-def calculate_allocation_matrix(rotor_configuration):
-
-    num_rotors = len(rotor_configuration.rotors)
-    A = np.zeros((4, num_rotors))
-    for i, rotor in enumerate(rotor_configuration.rotors):
-        A[0, i] = math.sin(rotor.angle) * rotor.arm_length * rotor.rotor_force_constant
-        A[1, i] = -math.cos(rotor.angle) * rotor.arm_length * rotor.rotor_force_constant
-        A[2, i] = -rotor.direction * rotor.rotor_force_constant * rotor.rotor_moment_constant
-        A[3, i] = rotor.rotor_force_constant
-    return A
-
-class RollPitchYawrateThrustControllerParameters:
-    def __init__(self):
-        self.attitude_gain = kDefaultAttitudeGain.copy()
-        self.angular_rate_gain = kDefaultAngularRateGain.copy()
-        # Impostiamo una configurazione dei rotori di default.
-        self.rotor_configuration = RotorConfiguration()
-        self.allocation_matrix = calculate_allocation_matrix(self.rotor_configuration)
 
 class RollPitchYawrateThrustController:
     def __init__(self):
-        self.controller_parameters = RollPitchYawrateThrustControllerParameters()
-        self.vehicle_parameters = Drone()
+        self.attitude_gain = np.array([0.7, 0.7, 0.035])
+        self.angular_rate_gain = np.array([0.1, 0.1, 0.025])
+        self.drone = Drone()
+        self.allocation_matrix = self.calculate_allocation_matrix()
         self.initialized_params = False
         self.controller_active = False
 
@@ -99,22 +78,32 @@ class RollPitchYawrateThrustController:
 
     def InitializeParameters(self):
         # Aggiorna la matrice di allocazione usando la configurazione dei rotori del veicolo
-        self.controller_parameters.allocation_matrix = calculate_allocation_matrix(self.vehicle_parameters.rotor_configuration)
+        self.allocation_matrix = self.calculate_allocation_matrix()
 
-        inv_inertia = np.linalg.inv(self.vehicle_parameters.inertia)
-        self.normalized_attitude_gain = inv_inertia @ self.controller_parameters.attitude_gain
-        self.normalized_angular_rate_gain = inv_inertia @ self.controller_parameters.angular_rate_gain
+        inv_inertia = np.linalg.inv(self.drone.inertia)
+        self.normalized_attitude_gain = inv_inertia @ self.attitude_gain
+        self.normalized_angular_rate_gain = inv_inertia @ self.angular_rate_gain
 
         # Costruisci la matrice I (4x4): blocco superiore sinistro = inertia, I[3,3] = 1
         I = np.zeros((4, 4))
-        I[:3, :3] = self.vehicle_parameters.inertia
+        I[:3, :3] = self.drone.inertia
         I[3, 3] = 1.0
 
-        A = self.controller_parameters.allocation_matrix  # dimensione (4, num_rotors)
+        A = self.allocation_matrix  # dimensione (4, num_rotors)
         inv_term = np.linalg.inv(A @ A.T)
         self.angular_acc_to_rotor_velocities = A.T @ inv_term @ I
 
         self.initialized_params = True
+
+    def calculate_allocation_matrix(self):
+        num_rotors = len(self.drone.rotor_configuration.rotors)
+        A = np.zeros((4, num_rotors))
+        for i, rotor in enumerate(self.drone.rotor_configuration.rotors):
+            A[0, i] = math.sin(rotor.angle) * rotor.arm_length * rotor.rotor_force_constant
+            A[1, i] = -math.cos(rotor.angle) * rotor.arm_length * rotor.rotor_force_constant
+            A[2, i] = -rotor.direction * rotor.rotor_force_constant * rotor.rotor_moment_constant
+            A[3, i] = rotor.rotor_force_constant
+        return A
 
     def CalculateRotorVelocities(self):
         """
@@ -124,7 +113,7 @@ class RollPitchYawrateThrustController:
         if not self.initialized_params:
             raise Exception("I parametri del controller non sono stati inizializzati.")
         
-        num_rotors = len(self.vehicle_parameters.rotor_configuration.rotors)
+        num_rotors = len(self.drone.rotor_configuration.rotors)
         if not self.controller_active:
             return np.zeros(num_rotors)
 

@@ -5,7 +5,7 @@ from collections import deque
 from std_msgs.msg import Float64
 from dql_multirotor_landing.filters import ButterworthFilter
 
-class PidObject:
+class PID():
     """
     PID Controller class that calculates control efforts based on the error between a setpoint
     and the current plant state. This controller uses Butterworth filters to smooth the error and

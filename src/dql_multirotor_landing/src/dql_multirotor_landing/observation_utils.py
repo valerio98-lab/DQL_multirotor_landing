@@ -287,7 +287,7 @@ class ObservationUtils:
         return Quaternion(*q_rel)
     
 
-    def eigen_odometry_from_msg(msg):
+    def odometry_from_msg(msg):
 
         position = np.array([msg.pose.pose.position.x,
                                 msg.pose.pose.position.y,

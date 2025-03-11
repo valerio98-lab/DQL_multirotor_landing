@@ -39,7 +39,7 @@ class RollPitchYawrateThrustControllerNode:
 
         rospy.loginfo_once("RollPitchYawrateThrustController ha ricevuto il primo messaggio di odometria.")
         
-        odom = ObservationUtils.eigen_odometry_from_msg(msg)
+        odom = ObservationUtils.odometry_from_msg(msg)
         self.controller.SetOdometry(odom)
         
         rotor_velocities = self.controller.CalculateRotorVelocities()
