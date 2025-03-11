@@ -44,7 +44,6 @@ class Drone:
         self.rotor_configuration = RotorConfiguration()
 
 
-# Definiamo una semplice classe per il comando roll_pitch_yawrate_thrust
 class StateMsg:
     def __init__(self, roll=0.0, pitch=0.0, yaw_rate=0.0, thrust=None):
         self.roll = roll
@@ -59,16 +58,11 @@ class AttitudeController:
     def __init__(self):
         self.attitude_gain = np.array([0.7, 0.7, 0.035])
         self.angular_rate_gain = np.array([0.1, 0.1, 0.025])
+        self.odometry = None
         self.drone = Drone()
         self.allocation_matrix = self.calculate_allocation_matrix()
-        self.controller_active = False
 
-        # Comando corrente (roll, pitch, yaw_rate, thrust)
         self.state = StateMsg()
-
-        inv_inertia = np.linalg.inv(self.drone.inertia)
-        self.normalized_attitude_gain = inv_inertia @ self.attitude_gain
-        self.normalized_angular_rate_gain = inv_inertia @ self.angular_rate_gain
 
         I = np.block([[self.drone.inertia, np.zeros((3, 1))],
                       [np.zeros((1, 3)), 1.0]])
@@ -86,16 +80,14 @@ class AttitudeController:
             A[3, i] = rotor.rotor_force_constant
         return A
 
-    def CalculateRotorVelocities(self):
+
+    def compute_rotor_velocities(self):
         """
         Calcola le velocità dei rotori.
         Restituisce un vettore NumPy di dimensione pari al numero di rotori.
         """
-        num_rotors = len(self.drone.rotor_configuration.rotors)
-        if not self.controller_active:
-            return np.zeros(num_rotors)
 
-        angular_acceleration = self.ComputeDesiredAngularAcc()
+        angular_acceleration = self._compute_desired_ang_acc()
 
         # Costruisci il vettore di comando a 4 elementi: [angular_acceleration; thrust_z]
         angular_acceleration_thrust = np.zeros(4)
@@ -107,22 +99,8 @@ class AttitudeController:
         rotor_velocities = np.sqrt(rotor_velocities)
         return rotor_velocities
 
-    def SetOdometry(self, odometry):
-        """
-        Imposta lo stato odometrico.
-        L'oggetto odometry dovrebbe avere attributi: position, orientation (quaternion [x,y,z,w]),
-        velocity e angular_velocity (tutti vettori NumPy).
-        """
-        self.odometry = odometry
 
-    def SetRollPitchYawrateThrust(self, state):
-        """
-        Imposta il comando di roll, pitch, yaw_rate e thrust.
-        """
-        self.state = state
-        self.controller_active = True
-
-    def ComputeDesiredAngularAcc(self):
+    def _compute_desired_ang_acc(self):
         """
         Calcola l'accelerazione angolare desiderata secondo la logica di Lee et al.
         Restituisce un vettore NumPy di dimensione 3.
@@ -130,11 +108,11 @@ class AttitudeController:
         if self.odometry is None:
             raise Exception("L'odometria non è stata impostata.")
         
-        # Ottieni la matrice di rotazione dall'orientamento (quaternion in formato [x,y,z,w])
+        # Ottieni la matrice di rotazione dall'orientamento attuale 
         R_full = tft.quaternion_matrix(self.odometry.orientation)
         R = R_full[:3, :3]
 
-        # Calcola l'angolo di yaw corrente: yaw = atan2(R[1,0], R[0,0])
+        # Calcola l'angolo di yaw corrente: yaw = atan2(R[1,0], R[0,0]) necessario per la matrice di rotazione desiderata
         yaw = math.atan2(R[1, 0], R[0, 0])
 
         # Costruisci la matrice di rotazione desiderata: R_des = R_yaw * R_roll * R_pitch
@@ -145,7 +123,7 @@ class AttitudeController:
 
         # Calcola l'errore angolare come: 0.5 * (R_des^T*R - R^T*R_des)
         angle_error_matrix = 0.5 * (R_des.T @ R - R.T @ R_des)
-        angle_error = ObservationUtils.vec_from_skew_matrix(angle_error_matrix)
+        angle_error = self._vec_from_skew_matrix(angle_error_matrix)
 
         # Imposta la velocità angolare desiderata: normalmente solo la componente z (yaw rate) è non nulla
         angular_rate_des = np.zeros(3)
@@ -156,7 +134,17 @@ class AttitudeController:
 
         # Legge la legge di controllo:
         # - gain * errore angolare - gain * errore di velocità angolare + termine non lineare (cross product)
-        angular_acceleration = - np.multiply(angle_error, self.normalized_attitude_gain) \
-                                - np.multiply(angular_rate_error, self.normalized_angular_rate_gain) \
+
+        inv_inertia = np.linalg.inv(self.drone.inertia)
+        normalized_attitude_gain = inv_inertia @ self.attitude_gain
+        normalized_angular_rate_gain = inv_inertia @ self.angular_rate_gain
+
+        angular_acceleration = - np.multiply(angle_error, normalized_attitude_gain) \
+                                - np.multiply(angular_rate_error, normalized_angular_rate_gain) \
                                 + np.cross(self.odometry.angular_velocity, self.odometry.angular_velocity)
         return angular_acceleration
+
+
+    def _vec_from_skew_matrix(self, skew_mat):
+        return np.array([skew_mat[2, 1], skew_mat[0, 2], skew_mat[1, 0]])
+    

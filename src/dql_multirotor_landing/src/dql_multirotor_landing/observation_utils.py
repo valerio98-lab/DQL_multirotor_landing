@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import numpy as np
 import rospy
 import tf2_ros
@@ -19,13 +18,6 @@ from tf2_geometry_msgs import do_transform_pose, do_transform_vector3
 
 from dql_multirotor_landing.filters import KalmanFilter3D
 from dql_multirotor_landing.msg import Observation
-
-@dataclass
-class EigenOdometry:
-    position: np.ndarray
-    orientation : np.ndarray
-    velocity : np.ndarray
-    angular_velocity : np.ndarray
 
 class ObservationData:
     def __init__(self):
@@ -286,31 +278,4 @@ class ObservationUtils:
 
         return Quaternion(*q_rel)
     
-
-    def odometry_from_msg(msg):
-
-        position = np.array([msg.pose.pose.position.x,
-                                msg.pose.pose.position.y,
-                                msg.pose.pose.position.z])
-        orientation = np.array([msg.pose.pose.orientation.x,
-                                    msg.pose.pose.orientation.y,
-                                    msg.pose.pose.orientation.z,
-                                    msg.pose.pose.orientation.w])
-        velocity = np.array([msg.twist.twist.linear.x,
-                                msg.twist.twist.linear.y,
-                                msg.twist.twist.linear.z])
-        angular_velocity = np.array([msg.twist.twist.angular.x,
-                                        msg.twist.twist.angular.y,
-                                        msg.twist.twist.angular.z])
-        
-        odom = EigenOdometry(position, orientation, velocity, angular_velocity)
-        return odom
-
-    def skew_matrix(vec):
-        return np.array([[    0, -vec[2],  vec[1]],
-                        [vec[2],      0, -vec[0]],
-                        [-vec[1], vec[0],     0]])
-
-    def vec_from_skew_matrix(skew_mat):
-        return np.array([skew_mat[2, 1], skew_mat[0, 2], skew_mat[1, 0]])
 
