@@ -8,15 +8,14 @@ from nav_msgs.msg import Odometry
 from mav_msgs.msg import RollPitchYawrateThrust, Actuators
 
 # Importiamo i moduli che abbiamo definito
-from dql_multirotor_landing.attitude_controller import RollPitchYawrateThrustController, EigenRollPitchYawrateThrust
+from dql_multirotor_landing.attitude_controller import AttitudeController, StateMsg
 from dql_multirotor_landing.observation_utils import ObservationUtils  
 
 class RollPitchYawrateThrustControllerNode:
     def __init__(self):
         rospy.init_node('attitude_node', anonymous=True)
         
-        self.controller = RollPitchYawrateThrustController()
-        self.controller.InitializeParameters()
+        self.controller = AttitudeController()
 
         self.cmd_sub = rospy.Subscriber(rospy.get_param('~command_topic', 'command/roll_pitch_yawrate_thrust'),
                                         RollPitchYawrateThrust, self.roll_pitch_yawrate_thrust_callback, queue_size=1)
@@ -27,7 +26,7 @@ class RollPitchYawrateThrustControllerNode:
 
     def roll_pitch_yawrate_thrust_callback(self, msg):
 
-        cmd = EigenRollPitchYawrateThrust(
+        cmd = StateMsg(
             roll=msg.roll,
             pitch=msg.pitch,
             yaw_rate=msg.yaw_rate,

@@ -1,4 +1,3 @@
-# roll_pitch_yawrate_thrust_controller.py
 import numpy as np
 import math
 import tf.transformations as tft
@@ -46,7 +45,7 @@ class Drone:
 
 
 # Definiamo una semplice classe per il comando roll_pitch_yawrate_thrust
-class EigenRollPitchYawrateThrust:
+class StateMsg:
     def __init__(self, roll=0.0, pitch=0.0, yaw_rate=0.0, thrust=None):
         self.roll = roll
         self.pitch = pitch
@@ -56,48 +55,30 @@ class EigenRollPitchYawrateThrust:
         else:
             self.thrust = thrust
 
-
-class RollPitchYawrateThrustController:
+class AttitudeController:
     def __init__(self):
         self.attitude_gain = np.array([0.7, 0.7, 0.035])
         self.angular_rate_gain = np.array([0.1, 0.1, 0.025])
         self.drone = Drone()
         self.allocation_matrix = self.calculate_allocation_matrix()
-        self.initialized_params = False
         self.controller_active = False
 
-        self.normalized_attitude_gain = None
-        self.normalized_angular_rate_gain = None
-        self.angular_acc_to_rotor_velocities = None
-
         # Comando corrente (roll, pitch, yaw_rate, thrust)
-        self.roll_pitch_yawrate_thrust = EigenRollPitchYawrateThrust()
-        self.odometry = None
-
-        self.InitializeParameters()
-
-    def InitializeParameters(self):
-        # Aggiorna la matrice di allocazione usando la configurazione dei rotori del veicolo
-        self.allocation_matrix = self.calculate_allocation_matrix()
+        self.state = StateMsg()
 
         inv_inertia = np.linalg.inv(self.drone.inertia)
         self.normalized_attitude_gain = inv_inertia @ self.attitude_gain
         self.normalized_angular_rate_gain = inv_inertia @ self.angular_rate_gain
 
-        # Costruisci la matrice I (4x4): blocco superiore sinistro = inertia, I[3,3] = 1
-        I = np.zeros((4, 4))
-        I[:3, :3] = self.drone.inertia
-        I[3, 3] = 1.0
+        I = np.block([[self.drone.inertia, np.zeros((3, 1))],
+                      [np.zeros((1, 3)), 1.0]])
 
-        A = self.allocation_matrix  # dimensione (4, num_rotors)
-        inv_term = np.linalg.inv(A @ A.T)
-        self.angular_acc_to_rotor_velocities = A.T @ inv_term @ I
+        inv_term = np.linalg.inv(self.allocation_matrix)
+        self.angular_acc_to_rotor_velocities = inv_term @ I
 
-        self.initialized_params = True
 
     def calculate_allocation_matrix(self):
-        num_rotors = len(self.drone.rotor_configuration.rotors)
-        A = np.zeros((4, num_rotors))
+        A = np.zeros((4, 4))
         for i, rotor in enumerate(self.drone.rotor_configuration.rotors):
             A[0, i] = math.sin(rotor.angle) * rotor.arm_length * rotor.rotor_force_constant
             A[1, i] = -math.cos(rotor.angle) * rotor.arm_length * rotor.rotor_force_constant
@@ -110,9 +91,6 @@ class RollPitchYawrateThrustController:
         Calcola le velocità dei rotori.
         Restituisce un vettore NumPy di dimensione pari al numero di rotori.
         """
-        if not self.initialized_params:
-            raise Exception("I parametri del controller non sono stati inizializzati.")
-        
         num_rotors = len(self.drone.rotor_configuration.rotors)
         if not self.controller_active:
             return np.zeros(num_rotors)
@@ -122,7 +100,7 @@ class RollPitchYawrateThrustController:
         # Costruisci il vettore di comando a 4 elementi: [angular_acceleration; thrust_z]
         angular_acceleration_thrust = np.zeros(4)
         angular_acceleration_thrust[:3] = angular_acceleration
-        angular_acceleration_thrust[3] = self.roll_pitch_yawrate_thrust.thrust[2]
+        angular_acceleration_thrust[3] = self.state.thrust[2]
 
         rotor_velocities = self.angular_acc_to_rotor_velocities @ angular_acceleration_thrust
         rotor_velocities = np.maximum(rotor_velocities, 0)
@@ -137,11 +115,11 @@ class RollPitchYawrateThrustController:
         """
         self.odometry = odometry
 
-    def SetRollPitchYawrateThrust(self, roll_pitch_yawrate_thrust):
+    def SetRollPitchYawrateThrust(self, state):
         """
         Imposta il comando di roll, pitch, yaw_rate e thrust.
         """
-        self.roll_pitch_yawrate_thrust = roll_pitch_yawrate_thrust
+        self.state = state
         self.controller_active = True
 
     def ComputeDesiredAngularAcc(self):
@@ -161,8 +139,8 @@ class RollPitchYawrateThrustController:
 
         # Costruisci la matrice di rotazione desiderata: R_des = R_yaw * R_roll * R_pitch
         R_yaw = tft.rotation_matrix(yaw, (0, 0, 1))[:3, :3]
-        R_roll = tft.rotation_matrix(self.roll_pitch_yawrate_thrust.roll, (1, 0, 0))[:3, :3]
-        R_pitch = tft.rotation_matrix(self.roll_pitch_yawrate_thrust.pitch, (0, 1, 0))[:3, :3]
+        R_roll = tft.rotation_matrix(self.state.roll, (1, 0, 0))[:3, :3]
+        R_pitch = tft.rotation_matrix(self.state.pitch, (0, 1, 0))[:3, :3]
         R_des = R_yaw @ R_roll @ R_pitch
 
         # Calcola l'errore angolare come: 0.5 * (R_des^T*R - R^T*R_des)
@@ -171,7 +149,7 @@ class RollPitchYawrateThrustController:
 
         # Imposta la velocità angolare desiderata: normalmente solo la componente z (yaw rate) è non nulla
         angular_rate_des = np.zeros(3)
-        angular_rate_des[2] = self.roll_pitch_yawrate_thrust.yaw_rate
+        angular_rate_des[2] = self.state.yaw_rate
 
         # Calcola l'errore di velocità angolare: odometry.angular_velocity - R_des^T * R * angular_rate_des
         angular_rate_error = self.odometry.angular_velocity - (R_des.T @ (R @ angular_rate_des))
