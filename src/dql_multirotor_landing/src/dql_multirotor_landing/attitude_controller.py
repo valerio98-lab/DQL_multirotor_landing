@@ -108,9 +108,8 @@ class AttitudeController:
         """
         Computes the rotor speeds from moment and thrust.
         """
-        angular_acceleration = self._compute_desired_ang_acc()
+        angular_acceleration = self._compute_desired_moment()
 
-        # Costruisci il vettore di comando a 4 elementi: [angular_acceleration; thrust_z]
         moment_thrust = np.zeros(4)
         moment_thrust[:3] = angular_acceleration
         moment_thrust[3] = self.state.thrust[2]
@@ -122,12 +121,12 @@ class AttitudeController:
         return rotor_velocities
 
 
-    def _compute_desired_ang_acc(self):
+    def _compute_desired_moment(self):
         """
         Computes the desired control moments using the geometric control approach.
         """
         if self.odometry is None:
-            raise Exception("L'odometria non è stata impostata.")
+            raise Exception("Odometry has not been provided.")
         
         # Obtain the current rotation matrix from the quaternion
         R_full = tft.quaternion_matrix(self.odometry.orientation)

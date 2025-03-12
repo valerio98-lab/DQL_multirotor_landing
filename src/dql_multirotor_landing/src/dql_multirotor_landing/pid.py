@@ -19,20 +19,13 @@ class PID():
         self.filter_deriv = ButterworthFilter()
         self.error_integral = 0.0
 
-        self.plant_state = 0.0
-        self.control_effort = 0.0
+        self.current_state = 0.0
         self.setpoint = 0.0
-        self.new_state_or_setpt = False
 
         self.prev_time = None
-        self.last_setpoint_msg_time = rospy.Time.now()
-
-        self.proportional = 0.0
-        self.integral = 0.0
-        self.derivative = 0.0
 
         self.load_params()
-        self.init_ros_comm()
+        self.init_ros_comunication()
         self.prev_time = rospy.Time.now()
         self.run()
 
@@ -48,25 +41,23 @@ class PID():
 
         self.windup_limit = rospy.get_param(ns + "windup_limit", 1000.0)
         self.cutoff_frequency = rospy.get_param(ns + "cutoff_frequency", -1.0)
-        self.topic_from_controller = rospy.get_param(ns + "topic_from_controller", "control_effort")
-        self.topic_from_plant = rospy.get_param(ns + "topic_from_plant", "state")
+        self.controller_topic = rospy.get_param(ns + "controller_topic", "control_effort")
+        self.state_topic = rospy.get_param(ns + "state_topic", "state")
         self.setpoint_topic = rospy.get_param(ns + "setpoint_topic", "setpoint")
         self.max_loop_frequency = rospy.get_param(ns + "max_loop_frequency", 1.0)
         self.min_loop_frequency = rospy.get_param(ns + "min_loop_frequency", 1000.0)
 
-    def init_ros_comm(self):
-        self.control_effort_pub = rospy.Publisher(self.topic_from_controller, Float64, queue_size=1)
-        rospy.Subscriber(self.topic_from_plant, Float64, self.plant_state_callback)
-        rospy.Subscriber(self.setpoint_topic, Float64, self.setpoint_callback)
 
-    def setpoint_callback(self, msg):
+    def init_ros_comunication(self):
+        self.effort_pub = rospy.Publisher(self.controller_topic, Float64, queue_size=1)
+        rospy.Subscriber(self.state_topic, Float64, self._current_state_callback)
+        rospy.Subscriber(self.setpoint_topic, Float64, self._setpoint_callback)
+
+    def _setpoint_callback(self, msg):
         self.setpoint = msg.data
-        self.last_setpoint_msg_time = rospy.Time.now()
-        self.new_state_or_setpt = True
 
-    def plant_state_callback(self, msg):
-        self.plant_state = msg.data
-        self.new_state_or_setpt = True
+    def _current_state_callback(self, msg):
+        self.current_state = msg.data
 
     def output(self):
         """
@@ -77,45 +68,44 @@ class PID():
           - Computing PID control effort and publishing it via ROS
         """
 
-        if not self.new_state_or_setpt:
-            return
-
-        current_error = self.setpoint - self.plant_state
-        self.error.appendleft(current_error)
-
         current_time = rospy.Time.now()
         if self.prev_time is None:
             self.prev_time = current_time
             return
-
+        
         delta_t = (current_time - self.prev_time).to_sec()
         if delta_t == 0:
             rospy.logerr("delta_t=0; jumping this loop. Current Time: {:.2f}".format(current_time.to_sec()))
             return
         self.prev_time = current_time
 
+        current_error = self.setpoint - self.current_state
+        self.error.appendleft(current_error)
+
+        ## Compute the error integral
         self.error_integral += self.error[0] * delta_t
         self.error_integral = np.clip(self.error_integral, -self.windup_limit, self.windup_limit)
 
+        ## Compute the proportional filtered error
         filtered_error = self.filter_error.update(self.error[0])
 
+        ## Compute the derivative of the error
         derivative_raw = (self.error[0] - self.error[1]) / delta_t
-
         filtered_deriv = self.filter_deriv.update(derivative_raw)
 
+        ## Compute the PID terms
         self.proportional = self.Kp * filtered_error
         self.integral = self.Ki * self.error_integral
         self.derivative = self.Kd * filtered_deriv
 
-        self.control_effort = self.proportional + self.integral + self.derivative
-        self.control_effort = np.clip(self.control_effort, self.lower_limit, self.upper_limit)
+        self.effort = self.proportional + self.integral + self.derivative
+        self.effort = np.clip(self.effort, self.lower_limit, self.upper_limit)
 
-        self.publish_control_effort()
-        self.new_state_or_setpt = False
+        self._publish_control_effort()
 
-    def publish_control_effort(self):
-        msg = Float64(data=self.control_effort)
-        self.control_effort_pub.publish(msg)
+    def _publish_control_effort(self):
+        msg = Float64(data=self.effort)
+        self.effort_pub.publish(msg)
 
 
     def run(self):
@@ -129,9 +119,3 @@ class PID():
             rate.sleep()
 
 
-if __name__ == "__main__":
-    rospy.init_node("pid_controller")
-    try:
-        PidObject()
-    except rospy.ROSInterruptException:
-        pass

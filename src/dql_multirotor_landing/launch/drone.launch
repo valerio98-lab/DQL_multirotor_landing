@@ -24,7 +24,7 @@
 		<arg name="y" value="$(arg Y)" />
 		<arg name="z" value="$(arg Z)" />
 	</include>
-	<node name="roll_pitch_yawrate_thrust_controller_node" pkg="dql_multirotor_landing" type="attitude_node.py" output="screen">
+	<node name="attitude_controller" pkg="dql_multirotor_landing" type="attitude_node.py" output="screen">
 		<rosparam command="load" file="$(find rotors_gazebo)/resource/$(arg mav_name).yaml" />
 		<remap from="odometry" to="odometry_sensor1/odometry" />
 	</node>
@@ -40,8 +40,8 @@
 		<param name="windup_limit" value="10" />
 		<param name="max_loop_frequency" value="1000.0" />
 		<param name="min_loop_frequency" value="1.0" />
-		<param name="topic_from_controller" value="/$(arg drone_name)/control_effort/v_z/" />
-		<param name="topic_from_plant" value="/$(arg drone_name)/state/v_z" />
+		<param name="controller_topic" value="/$(arg drone_name)/control_effort/v_z/" />
+		<param name="state_topic" value="/$(arg drone_name)/state/v_z" />
 		<param name="setpoint_topic" value="/$(arg drone_name)/setpoint/v_z" />
 	</node>
 	<node name="controller_yaw" pkg="dql_multirotor_landing" type="pid_node.py" ns="pid_yaw" output="screen">
@@ -54,8 +54,8 @@
 		<param name="windup_limit" value="5" />
 		<param name="max_loop_frequency" value="1000.0" />
 		<param name="min_loop_frequency" value="1.0" />
-		<param name="topic_from_controller" value="/$(arg drone_name)/control_effort/yaw" />
-		<param name="topic_from_plant" value="/$(arg drone_name)/state/yaw" />
+		<param name="controller_topic" value="/$(arg drone_name)/control_effort/yaw" />
+		<param name="state_topic" value="/$(arg drone_name)/state/yaw" />
 		<param name="setpoint_topic" value="/$(arg drone_name)/setpoint/yaw" />
 	</node>
 </launch>

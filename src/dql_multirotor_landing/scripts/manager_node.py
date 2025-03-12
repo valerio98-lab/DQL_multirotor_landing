@@ -207,18 +207,6 @@ class ManagerNode:
         self._publish_rel_pos(rel_pos)
         self._publish_rel_vel(rel_vel)
 
-        # Compute and publish the relative roll, pitch, and yaw angles
-        rpy_angles = np.degrees(
-            euler_from_quaternion(
-                [
-                    rel_pos.pose.orientation.x,
-                    rel_pos.pose.orientation.y,
-                    rel_pos.pose.orientation.z,
-                    rel_pos.pose.orientation.w,
-                ]
-            )
-        )
-
         # Compute and publish observation data
         obs_msg = self.utils.get_observation(rel_pos, rel_vel, self.mp_contact_occured)
         self.observation_pub.publish(obs_msg)
@@ -351,6 +339,15 @@ class ManagerNode:
         self._pub_vz_setpoint.publish(Float64(data=self.pid_setpoints.v_z))
         self._pub_yaw_setpoint.publish(Float64(data=self.pid_setpoints.yaw))
 
+        cmd = RollPitchYawrateThrust()
+        cmd.roll = self.pid_setpoints.roll
+        cmd.pitch = self.pid_setpoints.pitch
+        cmd.yaw_rate = self.effort.yaw_effort
+        thrust_vector = Vector3()
+        thrust_vector.z = self.effort.vz_effort
+        cmd.thrust = thrust_vector
+        self._pub_rpy_thrust.publish(cmd)
+
     def _extract_yaw(self, orientation):
         """
         Extracts the yaw (rotation around Z-axis) from a quaternion.
@@ -362,21 +359,21 @@ class ManagerNode:
             [orientation.x, orientation.y, orientation.z, orientation.w]
         )[2]
 
-    def _publish_rpy_thrust(self):
-        """
-        Publishes the composite command message for roll, pitch, yaw rate, and thrust.
+    # def _publish_rpy_thrust(self):
+    #     """
+    #     Publishes the composite command message for roll, pitch, yaw rate, and thrust.
 
-        Constructs a RollPitchYawrateThrust message using the current action setpoints and control efforts,
-        and publishes it to the designated topic.
-        """
-        cmd = RollPitchYawrateThrust()
-        cmd.roll = self.pid_setpoints.roll
-        cmd.pitch = self.pid_setpoints.pitch
-        cmd.yaw_rate = self.effort.yaw_effort
-        thrust_vector = Vector3()
-        thrust_vector.z = self.effort.vz_effort
-        cmd.thrust = thrust_vector
-        self._pub_rpy_thrust.publish(cmd)
+    #     Constructs a RollPitchYawrateThrust message using the current action setpoints and control efforts,
+    #     and publishes it to the designated topic.
+    #     """
+    #     cmd = RollPitchYawrateThrust()
+    #     cmd.roll = self.pid_setpoints.roll
+    #     cmd.pitch = self.pid_setpoints.pitch
+    #     cmd.yaw_rate = self.effort.yaw_effort
+    #     thrust_vector = Vector3()
+    #     thrust_vector.z = self.effort.vz_effort
+    #     cmd.thrust = thrust_vector
+    #     self._pub_rpy_thrust.publish(cmd)
 
     def run(self):
         """
@@ -398,8 +395,7 @@ class ManagerNode:
 
             self.publish_obs(drone_tf, mp_tf)
 
-            # Apply control commands to the drone publishing towards c++ controllers
-            self._publish_rpy_thrust()
+            #self._publish_rpy_thrust()
             rate.sleep()
 
     def _reset_random_seed(self, req):
