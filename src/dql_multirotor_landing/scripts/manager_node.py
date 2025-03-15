@@ -359,21 +359,6 @@ class ManagerNode:
             [orientation.x, orientation.y, orientation.z, orientation.w]
         )[2]
 
-    # def _publish_rpy_thrust(self):
-    #     """
-    #     Publishes the composite command message for roll, pitch, yaw rate, and thrust.
-
-    #     Constructs a RollPitchYawrateThrust message using the current action setpoints and control efforts,
-    #     and publishes it to the designated topic.
-    #     """
-    #     cmd = RollPitchYawrateThrust()
-    #     cmd.roll = self.pid_setpoints.roll
-    #     cmd.pitch = self.pid_setpoints.pitch
-    #     cmd.yaw_rate = self.effort.yaw_effort
-    #     thrust_vector = Vector3()
-    #     thrust_vector.z = self.effort.vz_effort
-    #     cmd.thrust = thrust_vector
-    #     self._pub_rpy_thrust.publish(cmd)
 
     def run(self):
         """
@@ -395,7 +380,6 @@ class ManagerNode:
 
             self.publish_obs(drone_tf, mp_tf)
 
-            #self._publish_rpy_thrust()
             rate.sleep()
 
     def _reset_random_seed(self, req):
