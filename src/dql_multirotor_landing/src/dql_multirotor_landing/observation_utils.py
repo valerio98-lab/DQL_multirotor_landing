@@ -201,18 +201,6 @@ class ObservationUtils:
 
         return np.array([getattr(msg, attr) for attr in attributes])
 
-    def numpy_to_msg(self, msg, fields, values):
-        """
-        Updates a ROS message with values from a NumPy array.
-
-        Args:
-            msg (ROS message): The message to update.
-            fields (list[str]): The list of message fields to update.
-            values (np.array): The corresponding values.
-        """
-
-        for field, value in zip(fields, values):
-            setattr(msg, field, value)
 
     def _get_relative_velocity(self, drone_state, mp_state, timestamp):
         """Computes relative velocity between the drone and the moving platform."""
@@ -253,6 +241,7 @@ class ObservationUtils:
         rel_pos.header.frame_id = self.target_frame
 
         mp_pos = self.msg_to_numpy_vector(mp_state.pose.pose.position, ["x", "y", "z"])
+        
         drone_pos = self.msg_to_numpy_vector(
             drone_state.pose.pose.position, ["x", "y", "z"]
         )

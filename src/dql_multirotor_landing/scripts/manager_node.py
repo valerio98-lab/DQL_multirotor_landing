@@ -20,7 +20,7 @@ from dql_multirotor_landing.srv import ResetRandomSeed, ResetRandomSeedResponse
 
 
 @dataclass
-class PID_Setpoints:
+class PIDSetpoints:
     pitch: float
     roll: float
     v_z: float
@@ -28,7 +28,7 @@ class PID_Setpoints:
 
 
 @dataclass
-class thrust_cmd:
+class ThrustCmd:
     vz_effort: float
     vz_state: float
     yaw_effort: float
@@ -138,8 +138,8 @@ class ManagerNode:
 
         ## Set up module for moving platform and pid controllers
         self.moving_platform = MovingPlatform()
-        self.pid_setpoints = PID_Setpoints(0, 0, 0, 0)
-        self.effort = thrust_cmd(0, 0, 0, 0)
+        self.pid_setpoints = PIDSetpoints(0, 0, 0, 0)
+        self.effort = ThrustCmd(0, 0, 0, 0)
         self.mp_contact_occured = False
 
     def _init_publisher(self):
@@ -235,7 +235,10 @@ class ManagerNode:
 
         :param odom_msg: ROS Odometry message containing the drone's current pose.
         """
-        yaw = self._extract_yaw(odom_msg.pose.pose.orientation)
+        orientation = odom_msg.pose.pose.orientation
+        yaw = euler_from_quaternion(
+            [orientation.x, orientation.y, orientation.z, orientation.w]
+        )[2]
 
         pos = (
             odom_msg.pose.pose.position.x,
@@ -316,7 +319,7 @@ class ManagerNode:
             self.observation_data.request_simulation_reset = True
 
             rospy.loginfo("Reset initiated")
-            self.pid_setpoints = PID_Setpoints(0, 0, 0, 0)
+            self.pid_setpoints = PIDSetpoints(0, 0, 0, 0)
             rospy.loginfo("New action values: %s", self.pid_setpoints)
             self.mp_contact_occured = False
 
@@ -347,17 +350,6 @@ class ManagerNode:
         thrust_vector.z = self.effort.vz_effort
         cmd.thrust = thrust_vector
         self._pub_rpy_thrust.publish(cmd)
-
-    def _extract_yaw(self, orientation):
-        """
-        Extracts the yaw (rotation around Z-axis) from a quaternion.
-
-        :param orientation: Quaternion representing the object's orientation.
-        :return: Yaw angle in radians.
-        """
-        return euler_from_quaternion(
-            [orientation.x, orientation.y, orientation.z, orientation.w]
-        )[2]
 
 
     def run(self):
