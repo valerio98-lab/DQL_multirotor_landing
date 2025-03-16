@@ -141,6 +141,8 @@ class ManagerNode:
         self.pid_setpoints = PIDSetpoints(0, 0, 0, 0)
         self.effort = ThrustCmd(0, 0, 0, 0)
         self.mp_contact_occured = False
+        self.effort_vz_bool = False
+        self.effort_yaw_bool = False
 
     def _init_publisher(self):
         self.gazebo_pose_pub = rospy.Publisher(
@@ -279,9 +281,13 @@ class ManagerNode:
 
     def _vz_effort_callback(self, msg: Float64):
         self.effort.vz_effort = msg.data
+        self.effort_vz_bool = True
+        self._publish_for_attitude()
 
     def _yaw_effort_callback(self, msg: Float64):
         self.effort.yaw_effort = msg.data
+        self.effort_yaw_bool = True
+        self._publish_for_attitude()
 
     def _publish_rel_pos(self, rel_pos: PoseStamped):
         """
@@ -341,15 +347,25 @@ class ManagerNode:
     def _publish_setpoints(self):
         self._pub_vz_setpoint.publish(Float64(data=self.pid_setpoints.v_z))
         self._pub_yaw_setpoint.publish(Float64(data=self.pid_setpoints.yaw))
+        self._publish_for_attitude()
 
-        cmd = RollPitchYawrateThrust()
-        cmd.roll = self.pid_setpoints.roll
-        cmd.pitch = self.pid_setpoints.pitch
-        cmd.yaw_rate = self.effort.yaw_effort
-        thrust_vector = Vector3()
-        thrust_vector.z = self.effort.vz_effort
-        cmd.thrust = thrust_vector
-        self._pub_rpy_thrust.publish(cmd)
+    def _publish_for_attitude(self): 
+        """Function publishes the setpoints and the control effort computed by the height and yaw controller (PID). 
+            The attitude controller is then able to use these values to compute rotor angular velocities.
+
+            The function publish only if both the vz and yaw control effort are received.
+        """
+        if self.effort_vz_bool and self.effort_yaw_bool:
+            cmd = RollPitchYawrateThrust()
+            cmd.roll = self.pid_setpoints.roll
+            cmd.pitch = self.pid_setpoints.pitch
+            cmd.yaw_rate = self.effort.yaw_effort
+            thrust_vector = Vector3()
+            thrust_vector.z = self.effort.vz_effort
+            cmd.thrust = thrust_vector
+            self._pub_rpy_thrust.publish(cmd)
+            self.effort_vz_bool = False
+            self.effort_yaw_bool = False    
 
 
     def run(self):
