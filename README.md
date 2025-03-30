@@ -1,4 +1,4 @@
-# DQL_multirotor_landing
+# DQL_quadrotor_landing
 
 Implementation of Double Q-Learning with Curriculum Learning for Autonomous UAV Landing on a Moving Platform 
 
