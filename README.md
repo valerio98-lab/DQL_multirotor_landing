@@ -2,6 +2,7 @@
 
 Implementation of Double Q-Learning with Curriculum Learning for Autonomous UAV Landing on a Moving Platform.
 
+A complete report on the project can be found in `extra/dql_multirotor_landing_report.pdf`. The report focuses more on the control aspect for academic reasons. A summarized overview is provided at the bottom of this README.
 
 ## Prerequisites
 
@@ -57,7 +58,7 @@ chmod +x test.sh
 
 ### Repository Overview
 
-| ![](./ex.gif) | 
+| ![](./extra/ex.gif) | 
 
 This repository implements a modular system for autonomous quadrotor landing on a moving platform using Reinforcement Learning. The architecture is built on ROS and Gazebo, and leverages tabular Double Q-Learning with curriculum learning. The codebase is structured into several key components, grouped by their functional role:
 
